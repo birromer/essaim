@@ -191,6 +191,7 @@ end
 fig, integ, rod, balls, traj = makefigure(u0)
 frames = 1:200
 
+# with the base figure, where to save and the frames
 record(fig, plotsdir("double_pendulum.mp4"), frames; framerate = 60) do i
     # this is executed for each frame i
     for j in 1:5  # each frame is stepped 5 times
@@ -198,3 +199,68 @@ record(fig, plotsdir("double_pendulum.mp4"), frames; framerate = 60) do i
     end
 end
 
+
+# make it interactive (!)
+
+# for interactivity we start with the same base figure,
+# having access to the integrator and the observables
+fig, integ, rod, balls, traj = makefigure(u0)
+
+# and we add a button bellow the plot (same columns, one row down)
+run = Button(fig[2,1];
+             label = "run",
+             tellwidth = false
+)
+
+# this is a simple flag for the information to be running or not
+is_running = Observable(false)
+
+# what happens when we click on the button:
+
+# (1) we flip the running flag
+on(run.clicks) do clicks
+    is_running[] = !is_running[]
+end
+
+# (2) we make it execute the animation step
+on(run.clicks) do clicks
+    @async while is_running[]       # while the running flag is true
+        isopen(fig.scene) || break  # and the simulation is still open
+        animstep!(integ, rod, balls, traj)  # execute an animation step
+        sleep(0.005)
+    end
+end
+
+# now we add another interaction, where clicking in the axis
+# makes the pendulum go there and restart
+
+# first we have to remove the existing default interaction
+ax = content(fig[1,1])
+Makie.deactivate_interaction!(ax, :rectanglezoom)
+
+# we add a trigger with the select point function
+# so that when we click in the axis we get an observable
+# with the coordinates of where was clicked
+spoint = select_point(ax.scene, marker = :circle)  # specify :circle for it to not bug
+
+# and to make the pendulum go to the point
+# we define how to get the state of the pendulum given a point
+function θωcoords(x, y)
+    θ = atan(y,x) + π/2
+    return SVector(θ,0,0,0)
+end
+
+# define a listener for when we have a click
+# with the coords at z
+on(spoint) do z
+    x, y = z
+    u = θωcoords(x, y)
+    reinit!(integ, u)
+
+    # reset the observables
+    x1,x2,y1,y2 = xycoords(u)
+    traj[] .= fill(Point2f(x2,y2), length(traj[]))
+    traj[] = traj[]
+    rod[] = [Point2f(0,0), Point2f(x1,y1), Point2f(x2,y2)]
+    balls[] = [Point2f(x1,y1), Point2f(x2,y2)]
+end
