@@ -8,7 +8,7 @@ using Plots
 plotlyjs()
 
 # receive a robot and returns the edges of the polygon representing it
-function triangle(X::Robot, base, height)::Matrix{Float64}
+function triangle(X::Essaim.Robot, base, height)::Matrix{Float64}
   # base triangle
   P::Matrix{Float64} = [
      height/2       0

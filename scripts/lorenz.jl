@@ -1,5 +1,4 @@
 using GLMakie
-using Mesh
 
 Base.@kwdef mutable struct Lorenz
 #mutable struct Lorenz
@@ -34,7 +33,7 @@ fig, ax, l = lines(points, color = colors,
     axis = (; type = Axis3, protrusions = (0, 0, 0, 0),
         viewmode = :fit, limits = (-30, 30, -30, 30, 0, 50)))
 
-record(fig, "lorenz.mp4", 1:120) do frame
+record(fig, plotsdir("lorenz.mp4"), 1:120) do frame
     for i in 1:50
         push!(points[], step!(attractor))
         push!(colors[], frame)
@@ -42,13 +41,4 @@ record(fig, "lorenz.mp4", 1:120) do frame
     ax.azimuth[] = 1.7pi + 0.3 * sin(2pi * frame / 120)
     notify.((points, colors))
     l.colorrange = (0, frame)
-end
-
-# observable initialized with value 1
-o = Observable(1)
-
-# listener attached to observable, action happens each time
-# it is updated
-l1 = on(o) do val
-    println("Observable now has value $val")
 end
