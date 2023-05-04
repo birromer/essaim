@@ -2,7 +2,7 @@ using DrWatson
 @quickactivate "Essaim"
 
 include(srcdir("Essaim.jl"))
-include(srcdir("Draw.jl"))
+include(srcdir("DrawPlots.jl"))
 
 # initialize plot
 base_plt = plot(
@@ -23,13 +23,13 @@ A = [
 
 # list of robots
 R = [
-  Essaim.Robot(0,0,0),
-  Essaim.Robot(0,1,0),
-  Essaim.Robot(1,0,0)
+  Robot(0,0,0),
+  Robot(0,1,0),
+  Robot(1,0,0)
 ]
 
 # run mission
-mission = Essaim.execute_mission(R, A, Essaim.d_dubins, Essaim.c_constant)
+mission = execute_mission(R, A, d_dubins, c_constant)
 
 N = length(R) # number of robots
 len = length(mission) # lenght of the mission

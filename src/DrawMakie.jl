@@ -3,43 +3,49 @@ using DrWatson
 
 include(srcdir("Essaim.jl"))
 
-# using Essaim: Robot, execute_mission, d_dubins, c_constant
-using Plots
-plotlyjs()
+using GLMakie
 
 # receive a robot and returns the edges of the polygon representing it
-function triangle(X::Essaim.Robot, base, height)::Matrix{Float64}
-  # base triangle
-  P::Matrix{Float64} = [
-     height/2       0
-    -height/2  base/2
-    -height/2 -base/2
-  ]
+function triangle_poly(X::Robot, base, height)::Vector{Point2f,2}
+    # base triangle
+    triangle::Matrix{Float64} = [
+         height/2       0
+        -height/2  base/2
+        -height/2 -base/2
+    ]
 
-  # first rotate p' = R * p
-  c::Float64, s::Float64 = cos(X.θ), sin(X.θ)
-  P = [
-    c -s
-    s  c
-  ] * P'
+    # first rotate p' = R * p
+    c::Float64, s::Float64 = cos(X.θ), sin(X.θ)
+    triangle = [
+        c -s
+        s  c
+    ] * triangle'
 
-  # then translate p = p .+ x
-  P = P' .+ [X.x X.y]
+    # then translate p = p .+ x
+    triangle = triangle' .+ [X.x X.y]
 
-  P
+    # repeat the first point to close the polygon
+    t = vcat(triangle, triangle[1,:]')
+
+    # create a list of points required by Makie
+    poly = [Point2f(t[i,:][1],t[i,:][2]) for i in axes(t,1)]
+
+    poly
 end
 
-function triangle_shape(triangle)
-  t = vcat(triangle, triangle[1,:]')
-  shape = [
-    (t[i,:][1],t[i,:][2]) for i in axes(t,1)]
+function makefigure(config_0, triangle_size=(0.5,0.5))
+    # triangle parameters
+    base, height = triangle_size
 
-  shape
+    #
+
 end
 
-function draw_mission(mission, base_plot, filename, fps=5, triangle_size=(0.5,0.5))
-  # triangle parameters
-  base, height = triangle_size
+function animstep!(configuration, δt)
+
+end
+
+function draw_mission(mission, filename, fps=5, triangle_size=(0.5,0.5))
 
   # start animation
   anim = Animation()

@@ -1,5 +1,3 @@
-module Essaim
-
 struct Robot
   x::Float64
   y::Float64
@@ -105,19 +103,3 @@ function execute_mission(R::Array{Robot,1}, A::Array{Int64,2}, deriv::Function, 
 
   execution
 end
-
-# visibility matrix
-A = [ 0 1 1; 
-      1 0 1;
-      1 1 0 ] 
-
-# list of robots
-R = [
-  Essaim.Robot(0,0,0),
-  Essaim.Robot(0,1,0),
-  Essaim.Robot(1,0,0)
-]
-
-mission = execute_mission(R, A, d_dubins, c_constant)
-
-end # module Essaim
