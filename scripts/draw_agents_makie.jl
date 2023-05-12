@@ -29,7 +29,7 @@ function initialize_model(;
                           vis_range = 5.0,       # visibility range
                           com_range = 5.0,       # communication range
                           δt = 0.05,             # time step of the model
-                          history_size = 150,     # amount of saved past states
+                          history_size = 300,     # amount of saved past states
                           seed = 42              # random seed
 )
     # initialize model
@@ -76,7 +76,7 @@ end
 function agent_simple_step!(robot, model)
     neighbor_ids = nearby_ids(robot, model, robot.vis_range)
 
-    robot.pos += robot.vel * model.δt
+    robot.pos = robot.pos .+ robot.vel .* model.δt
     robot.θ += robot.θ̇ * model.δt
 
     robot.vel = (
@@ -105,20 +105,19 @@ robot_color(robot::Robot) = robot.alive == true ? :darkgreen : :red
 r = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
 robot_marker(r)
 robot_color(r)
-
 model = initialize_model(;extent=(10.,10.))
+agent_simple_step!(r, model)
 
 # initialize figure for the animation
 function make_figure(model)
-
     # first we generate the markers for the current state of the robots
     #rob_pos = Observable([Point3f(r.pos[1], r.pos[2], r.θ) for r in allagents(model)])
     rob_pos = Observable([Point2f(r.pos[1], r.pos[2]) for r in allagents(model)])
 
     # generate the tail with all potions in the same place initially
     rob_hist = [Observable(CircularBuffer{Point2f}(model.history_size)) for _ in 1:nagents(model)]
-    for id in allids(model)
-        fill!(rob_hist[id][], rob_pos[][id])
+    for (id, buf) in enumerate(rob_hist)
+        fill!(buf[], rob_pos[][id])
     end
 
     # make the markers also observables, so that we can update the orientation too
@@ -140,7 +139,7 @@ function make_figure(model)
              strokewidth = 2,
              strokecolor = rob_color,
              color = :black,
-             markersize = 10
+             markersize = 20
     )
 
     # plot the trajectory of each of them
@@ -169,37 +168,25 @@ function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_marker, rob_
     # update trajectories
     for (id, buf) in enumerate(rob_hist)
         push!(buf[], rob_pos[][id])
+        buf[] = buf[]
     end
 
     # update the markers orientation and color
     rob_marker[] = robot_marker.(allagents(model))
     rob_color[] = robot_color.(allagents(model))
+    return
 end
 
-model = initialize_model(;extent=(10.,10.))
-
-for robot in allagents(model)
-    agent_simple_step!(robot, model)
-end
-
-robot_1 = model.agents[1]
-neighbor_ids = nearby_ids(robot_1, model, robot_1.vis_range)
-
-robot_1.pos += robot_1.vel .* model.δt
-robot_1.θ += robot_1.θ̇ .* model.δt
-
-robot_1.vel = (
-    robot_1.pos[1]*cos(robot_1.θ) - robot_1.pos[2]*sin(robot_1.θ),
-    robot_1.pos[1]*sin(robot_1.θ) + robot_1.pos[2]*cos(robot_1.θ)
-)
-
-for id in neighbor_ids
-    if euclidean_distance(robot_1.pos, model[id].pos, model) > robot_1.com_range
-        robot_1.θ̇ += 0.05
-        break
-    end
-end
+model = initialize_model(;extent=(10.,10.), seed=10)
 
 fig, rob_pos, rob_hist, rob_marker, rob_color = make_figure(model)
 
 animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_color)
+rob_marker[] = robot_marker()
+
+frames = 1:1000
+record(fig, plotsdir("essaim.mp4"), frames; framerate = 60) do i
+    for j in 1:5  # each frame is stepped 5 times
+        animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_color)
+    end
+end
