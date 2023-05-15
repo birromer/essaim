@@ -50,7 +50,7 @@ function initialize_model(;
     # now we add the agents
     for n ∈ 1:N
         # get random position and heading
-        pos = Tuple(rand(model.rng, 2) .* (10.,10.) .+ (extent./2))
+        pos = Tuple(rand(model.rng, 2)) .* (extent./2) .+ (extent./4)
         heading = rand(model.rng) * 2π
         vel = speed.* (
             pos[1]*cos(heading) - pos[2]*sin(heading),
