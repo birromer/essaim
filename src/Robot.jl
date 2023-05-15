@@ -67,7 +67,23 @@ end
 
 # we define how each robot behaves, at
 function agent_laplacian_step!(robot, model)
+    neighbor_ids = nearby_ids(robot, model, robot.vis_range)
 
+
+
+
+
+
+
+    robot.pos = robot.pos .+ robot.vel .* model.δt
+    robot.θ += robot.θ̇ * model.δt
+
+    robot.vel = (
+        robot.pos[1]*cos(robot.θ) - robot.pos[2]*sin(robot.θ),
+        robot.pos[1]*sin(robot.θ) + robot.pos[2]*cos(robot.θ)
+    )
+
+    return
 end
 
 # a sim behaviour for the robots

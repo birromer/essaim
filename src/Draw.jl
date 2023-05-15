@@ -5,16 +5,21 @@ include(srcdir("Robot.jl"))
 
 using Agents
 using GLMakie
+# using CairoMakie  # try it with cairo while not interactive
 using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
-const robot_poly = Polygon(Point2f[(0.5, 0.) ,(-0.5, 0.25) ,(-0.5,-0.25) ,( 0.5, 0.)])
+const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
 
 # helper functions for plotting
-robot_marker(robot::Robot) = rotate2D(robot_poly, robot.θ)
 robot_color(robot::Robot) = robot.alive == true ? :darkgreen : :red
+
+#robot_marker(robot::Robot) = rotate2D(robot_poly, robot.θ)
+#rob_marker = Observable(robot_marker.(allagents(model)))
+#r1 = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
+#model = initialize_model(;N=40, δt=0.001, history_size=500)
 
 # initialize figure for the animation
 function make_figure(model)
@@ -29,11 +34,11 @@ function make_figure(model)
     end
 
     # make the markers also observables, so that we can update the orientation too
-    rob_marker = Observable(robot_marker.(allagents(model)))
     rob_color = Observable(robot_color.(allagents(model)))
+    rob_rot = Observable([r.θ for r in allagents(model)])
 
     # create a new figure
-    fig = Figure(;resolution=(1400,1200)); display(fig)
+    fig = Figure(;resolution=(900,800)); display(fig)
     ax = Axis(fig[1,1])
 
     ax.title = "Dynamic continuous average consensus"
@@ -43,11 +48,12 @@ function make_figure(model)
 
     # plot the robots with triangles
     scatter!(ax, rob_pos;
-             marker = rob_marker,
+             marker = robot_poly,
+             rotations = rob_rot,
              strokewidth = 2,
              strokecolor = rob_color,
              color = :black,
-             markersize = 20
+             markersize = 11
     )
 
     # plot the trajectory of each of them
@@ -61,12 +67,12 @@ function make_figure(model)
         )
     end
 
-    return fig, rob_pos, rob_hist, rob_marker, rob_color
+    return fig, rob_pos, rob_hist, rob_color, rob_rot
 end
 
 # this function updates the data in the model using the robot step then updates
 # the observables (positions, trajectory and markers) related to the plot
-function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_marker, rob_color)
+function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_color, rob_rot)
     # update robot positions
     step!(model, agent_step!)
 
@@ -80,8 +86,8 @@ function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_marker, rob_
     end
 
     # update the markers orientation and color
-    rob_marker[] = robot_marker.(allagents(model))
     rob_color[] = robot_color.(allagents(model))
+    rob_rot[] = [r.θ for r in allagents(model)]
     return
 end
 
