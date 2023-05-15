@@ -24,11 +24,11 @@ end
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(;
                           N = 5,                 # number of agents
-                          extent = (20.0,20.0),  # size of the world
+                          extent = (100.0,100.0),  # size of the world
                           speed = 1.0,           # their initial velocity
                           vis_range = 5.0,       # visibility range
                           com_range = 5.0,       # communication range
-                          δt = 0.05,             # time step of the model
+                          δt = 0.01,             # time step of the model
                           history_size = 300,     # amount of saved past states
                           seed = 42              # random seed
 )
@@ -52,9 +52,12 @@ function initialize_model(;
     # now we add the agents
     for n ∈ 1:N
         # get random position and heading
-        pos = Tuple(rand(model.rng, 2) .* extent)
+        pos = Tuple(rand(model.rng, 2) .* (10.,10.) .+ (extent./2))
         heading = rand(model.rng) * 2π
-        vel = (speed, speed)
+        vel = speed.* (
+            pos[1]*cos(heading) - pos[2]*sin(heading),
+            pos[1]*sin(heading) + pos[2]*cos(heading)
+        )
 
         # initialize the agents with argument values and no heading change
         agent = Robot{D}(n, pos, vel, heading, 0.0, vis_range, com_range, true)
@@ -98,15 +101,15 @@ end
 const robot_poly = Polygon(Point2f[(0.5, 0.) ,(-0.5, 0.25) ,(-0.5,-0.25) ,( 0.5, 0.)])
 
 # helper functions for plotting
-robot_marker(robot::Robot) = rotate2D(robot_poly, r.θ)
+robot_marker(robot::Robot) = rotate2D(robot_poly, robot.θ)
 robot_color(robot::Robot) = robot.alive == true ? :darkgreen : :red
 
 # test
-r = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
-robot_marker(r)
-robot_color(r)
+r1 = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
+robot_marker(r1)
+robot_color(r1)
 model = initialize_model(;extent=(10.,10.))
-agent_simple_step!(r, model)
+agent_simple_step!(r1, model)
 
 # initialize figure for the animation
 function make_figure(model)
@@ -125,7 +128,7 @@ function make_figure(model)
     rob_color = Observable(robot_color.(allagents(model)))
 
     # create a new figure
-    fig = Figure(); display(fig)
+    fig = Figure(;resolution=(1400,1200)); display(fig)
     ax = Axis(fig[1,1])
 
     ax.title = "Dynamic continuous average consensus"
@@ -177,16 +180,18 @@ function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_marker, rob_
     return
 end
 
-model = initialize_model(;extent=(10.,10.), seed=10)
+model = initialize_model(;δt=0.001, history_size=500)
 
 fig, rob_pos, rob_hist, rob_marker, rob_color = make_figure(model)
 
-animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_color)
-rob_marker[] = robot_marker()
+for i ∈ 1:500
+    animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_color)
+    sleep(model.δt)
+end
 
 frames = 1:1000
 record(fig, plotsdir("essaim.mp4"), frames; framerate = 60) do i
-    for j in 1:5  # each frame is stepped 5 times
+    for j in 1:3  # each frame is stepped 3 times
         animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_color)
     end
 end
