@@ -10,7 +10,8 @@ using Graphs
 using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
-using Colors
+using Makie.Colors
+using Printf
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
 const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
@@ -19,10 +20,18 @@ const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 
 robot_status(robot::Robot) = robot.alive == true ? :darkgreen : :red
 
 function visibility_graph(model)
-    N = nagents(model)
     neighbours = [nearby_ids(r, model, r.vis_range) for r in allagents(model)]
 
-    m = [[i in neighbours[r] ? 1 : 0 for i in 1:N] for r in 1:N]
+    g = SimpleGraph(nagents(model))
+    for (id1,r1) in enumerate(allagents(model))
+        for id2 in nearby_ids(r1, model, r1.vis_range)
+            if id1 != id2
+                add_edge!(g, id1, id2)
+            end
+        end
+    end
+
+    g
 end
 
 #robot_marker(robot::Robot) = rotate2D(robot_poly, robot.θ)
@@ -33,8 +42,8 @@ model = initialize_model(;N=20, δt=0.001, history_size=500)
 # initialize figure for the animation
 function make_figure(model)
     N = nagents(model)
+
     # first we generate the markers for the current state of the robots
-    #rob_pos = Observable([Point3f(r.pos[1], r.pos[2], r.θ) for r in allagents(model)])
     rob_pos = Observable([Point2f(r.pos[1], r.pos[2]) for r in allagents(model)])
 
     # generate the tail with all potions in the same place initially
@@ -54,93 +63,115 @@ function make_figure(model)
     # different color for each robot
     traj_color = [[RGBAf(model.colors[r].r, model.colors[r].g, model.colors[r].b, (i/model.history_size)^2) for i in 1:model.history_size] for r in 1:N]
 
-    # create a new figure
-    fig = Figure(;resolution=(1200,800)); display(fig)
-    ax_main  = Axis(fig[1:4,1], title="Dynamic continuous average consensus")
-    ax_graph = Axis(fig[4:3,2], title="Visibility graph")
+    # make the visibility graph to be displayed in the side
+    vis_graph = Observable(visibility_graph(model))
 
-    ax_main.aspect = DataAspect()
-    ax_graph.aspect = DataAspect()
-    xlims!(ax_main, 0, model.space.extent[1])
-    ylims!(ax_main, 0, model.space.extent[2])
-
-    fig[2, 2] = buttongrid = GridLayout(tellwidth = false)
-    buttonlabels = ["Start", "Stop", "Reset"]
-    buttons = buttongrid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
-
-    sg = SliderGrid(
-        fig[1, 2],
-        (label = "Time step", range = 0:0.01:0.5, format = "{:.1f}s", startvalue = model.δt),
-        (label = "Visibility range", range = 0:0.1:model.space.extent[1], format = "{:.1f}m", startvalue = 10.),
-        (label = "Communication range", range = 0:0.1:model.space.extent[1], format = "{:.1f}m", startvalue = 10.),
-        width = 350,
-        tellheight = false
+    rob_plot = Dict(
+        "pos" => rob_pos,
+        "hist" => rob_hist,
+        "status" => rob_status,
+        "rot" => rob_rot,
+        "vis" => rob_vis,
+        "com" => rob_com,
+        "graph" => vis_graph
     )
 
-    # plot the robots with triangles
-    scatter!(ax_main, rob_pos;
+    # create a new figure
+    #fig = Figure(;resolution=(1200,800));
+    fig = Figure(); display(fig)
+
+    ax_main  = Axis(
+        fig[1:16,1:4],
+        title="Dynamic continuous average consensus",
+        aspect = DataAspect(),
+        limits = (0,model.space.extent[1], 0, model.space.extent[2]),
+        xminorticksvisible = true,
+        xminorticks = IntervalsBetween(5),
+        yminorticksvisible = true,
+        yminorticks = IntervalsBetween(5)
+    )
+
+    ax_graph = Axis(
+        fig[7:15,5:6],
+        title="Visibility graph",
+        aspect = DataAspect(),
+    )
+    hidedecorations!(ax_graph)
+
+    fig[6, 5:6] = buttongrid = GridLayout(tellwidth = false)
+    buttonlabels = ["Run/Stop", "Step", "Reset"]
+    buttons = buttongrid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
+
+    args_label = (;justification = :left, halign = :left)
+    Label(fig[2, 5], "Number of agents:"; args_label...)
+    Label(fig[3, 5], "Time step:"; args_label...)
+    Label(fig[4, 5], "Visibility radius:"; args_label...)
+    Label(fig[5, 5], "Seed:"; args_label...)
+
+    args_tb = (; halign = :left, textpadding = (6,6,6,6), validator = Float64)
+    tb_agents     = Textbox(fig[2, 6], placeholder = "25 agents"; args_tb...)
+    tb_time       = Textbox(fig[3, 6], placeholder = "0.01 seconds"; args_tb...)
+    tb_visibility = Textbox(fig[4, 6], placeholder = "25 meters"; args_tb...)
+    tb_seed       = Textbox(fig[5, 6], placeholder = "42"; args_tb...)
+
+    on(tb_agents.stored_string) do s
+        frequency[] = parse(Float64, s)
+    end
+
+    scatter!(ax_main, rob_plot["pos"];
              marker = robot_poly,
-             rotations = rob_rot,
+             rotations = rob_plot["rot"],
              strokewidth = 3,
-             strokecolor = rob_status, # contour color is status (alive/dead)
+             strokecolor = rob_plot["status"], # contour color is status (alive/dead)
              color = model.colors,     # unique color, same for trail
              markersize = 11
     )
 
-    # plot the trajectory of each of them
-    # TODO update this for the case new ones appear
-
     # plot trajectories
     for id in allids(model)
-        lines!(ax_main, rob_hist[id];
+        lines!(ax_main, rob_plot["hist"][id];
                linewidth = 3,
                color = traj_color[id]
         )
     end
 
     # plot visibility range
-#    for id in allids(model)
-#        arc!(ax_main, rob_pos, rob_vis;
-#               linestyle = :dash,
-#               linewidth = 2,
-#               color = traj_color[id]
-#        )
-#    end
-#
-#    # plot communication range
-#    for id in allids(model)
-#        arc!(ax_main, rob_pos, rob_com;
-#               linestyle = :dot,
-#               linewidth = 2,
-#               color = traj_color
-#        )
-#    end
+    for id in allids(model)
+        arc!(ax_main, model[id].pos, model[id].vis_range, -π, π;
+               linestyle = :dash,
+               linewidth = 1,
+               color = model.colors[id]
+        )
+    end
 
     # generate visibility graph with id colors
-#    g = visibility_graph(model)
-#    graphplot!(ax_graph, g)
+    graphplot!(ax_graph, rob_plot["graph"], node_color=model.colors)
 
-    return fig, rob_pos, rob_hist, rob_status, rob_rot
+    return fig, rob_plot
 end
 
 # this function updates the data in the model using the robot step then updates
 # the observables (positions, trajectory and markers) related to the plot
-function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_status, rob_rot)
+#function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_status, rob_rot, vis_graph)
+function animation_step!(model, agent_step!, rob_plot)
     # update robot positions
     step!(model, agent_step!)
 
     # update positions
-    rob_pos[] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
+    rob_plot["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
 
     # update trajectories
-    for (id, buf) in enumerate(rob_hist)
-        push!(buf[], rob_pos[][id])
+    for (id, buf) in enumerate(rob_plot["hist"])
+        push!(buf[], rob_plot["pos"][][id])
         buf[] = buf[]
     end
 
     # update the markers orientation and color
-    rob_status[] = robot_status.(allagents(model))
-    rob_rot[] = [r.θ for r in allagents(model)]
+    rob_plot["status"][] = robot_status.(allagents(model))
+    rob_plot["rot"][] = [r.θ for r in allagents(model)]
+
+    # update visibility graph
+    rob_plot["graph"][] = visibility_graph(model)
     return
 end
 
@@ -151,13 +182,19 @@ end
 # robot_color(r1)
 # model = initialize_model(;extent=(10.,10.))
 # agent_simple_step!(r1, model)
-#
-model = initialize_model(;δt=0.001, history_size=500, N=10, com_range=25., vis_range=25.)
 
-fig, rob_pos, rob_hist, rob_status, rob_rot = make_figure(model)
+model = initialize_model(;
+                         history_size=500,
+                         δt=0.01,
+                         N=5,
+                         com_range=10.,
+                         vis_range=10.,
+)
+
+fig, rob_plot = make_figure(model)
 
 for i ∈ 1:2500
-    animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_status, rob_rot)
+    animation_step!(model, agent_simple_step!, rob_plot)
     sleep(model.δt)
 end
 #
