@@ -38,7 +38,8 @@ function initialize_model(;
     D = length(extent)  # number of dimensions
     properties = Dict(  # save the time step in the model
         :δt => δt,
-        :history_size => history_size
+        :history_size => history_size,
+        :colors => distinguishable_colors(N)
     )
 
     model = AgentBasedModel(Robot{D}, space;
@@ -103,10 +104,12 @@ function agent_simple_step!(robot, model)
 
     for id in neighbor_ids
         if euclidean_distance(robot.pos, model[id].pos, model) > robot.com_range
-            robot.θ̇ += 0.05
-            break
+            robot.θ̇ += 0.01
+            return
         end
     end
+
+    robot.θ̇ -= 0.005
 
     return
 end

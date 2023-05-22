@@ -5,7 +5,8 @@ include(srcdir("Robot.jl"))
 
 using Agents
 using GLMakie
-# using CairoMakie  # try it with cairo while not interactive
+using GraphMakie
+using Graphs
 using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
@@ -58,7 +59,7 @@ function make_figure(model)
 
     # plot the trajectory of each of them
     c = to_color(:orange)
-    traj_color = [RGBAf(c.r, c.g, c.b, (i/model.history_size)^2) for i in 1:model.history_size]
+    traj_color = [RGBAf(c.r, c.g, c.b, (i/model.history_size)^3) for i in 1:model.history_size]
 
     for id in allids(model)
         lines!(ax, rob_hist[id];
