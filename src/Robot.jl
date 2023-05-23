@@ -39,7 +39,8 @@ function initialize_model(;
     properties = Dict(  # save the time step in the model
         :δt => δt,
         :history_size => history_size,
-        :colors => distinguishable_colors(N)
+        :colors => distinguishable_colors(N),
+        :seed => seed
     )
 
     model = AgentBasedModel(Robot{D}, space;

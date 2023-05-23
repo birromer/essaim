@@ -34,13 +34,13 @@ function visibility_graph(model)
     g
 end
 
-#robot_marker(robot::Robot) = rotate2D(robot_poly, robot.θ)
-#rob_marker = Observable(robot_marker.(allagents(model)))
-#r1 = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
-model = initialize_model(;N=20, δt=0.001, history_size=500)
+# for testing
+model = initialize_model(; history_size = 500, δt = 0.01, N = 10, com_range = 10., vis_range = 10., seed = 1)
 
 # initialize figure for the animation
-function make_figure(model)
+# TODO: handle model as an observer? probably best to do this in the run_simulation! and simulation_step!,
+# but think on how this affects here
+function make_figure(model; interactive=true)
     N = nagents(model)
 
     # first we generate the markers for the current state of the robots
@@ -57,8 +57,8 @@ function make_figure(model)
     rob_rot = Observable([r.θ for r in allagents(model)])
 
     # make the togglable properties of the plot observables too
-    rob_vis = Observable([r.vis_range for r in allagents(model)])
-    rob_com = Observable([r.com_range for r in allagents(model)])
+    rob_vis = [(Observable(r.pos), Observable(r.vis_range)) for r in allagents(model)]
+    rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
 
     # different color for each robot
     traj_color = [[RGBAf(model.colors[r].r, model.colors[r].g, model.colors[r].b, (i/model.history_size)^2) for i in 1:model.history_size] for r in 1:N]
@@ -66,7 +66,7 @@ function make_figure(model)
     # make the visibility graph to be displayed in the side
     vis_graph = Observable(visibility_graph(model))
 
-    rob_plot = Dict(
+    plot_dict = Dict(
         "pos" => rob_pos,
         "hist" => rob_hist,
         "status" => rob_status,
@@ -91,88 +91,201 @@ function make_figure(model)
         yminorticks = IntervalsBetween(5)
     )
 
+    interactive = false
+
     ax_graph = Axis(
-        fig[7:15,5:6],
+        fig[(interactive ? 9 : 2):15 ,5:6],
         title="Visibility graph",
-        aspect = DataAspect(),
+        tellwidth=false
     )
     hidedecorations!(ax_graph)
+    ax_graph.aspect = DataAspect()
 
-    fig[6, 5:6] = buttongrid = GridLayout(tellwidth = false)
-    buttonlabels = ["Run/Stop", "Step", "Reset"]
-    buttons = buttongrid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
+    if interactive
+        # add the control and parameter input options
+        fig[2:6, 5:6] = control_grid = GridLayout(tellwidth = false, tellheight = false)
+        texts = ["Number of agents:", "Time step (s):", "Visibility radius (m):", "Seed:"]
+        placeholders = [Observable(string(nagents(model))), Observable(string(model.δt)), Observable(string(model[1].vis_range)), Observable(string(model.seed))]
+        control_grid[1:4,1] = [Label(fig, text=t; justification = :left, halign = :left) for t in texts]
+        textboxes = control_grid[1:4,2] = [Textbox(fig, placeholder=p; halign = :right, textpadding = (5,5,5,5)) for p in placeholders]
 
-    args_label = (;justification = :left, halign = :left)
-    Label(fig[2, 5], "Number of agents:"; args_label...)
-    Label(fig[3, 5], "Time step:"; args_label...)
-    Label(fig[4, 5], "Visibility radius:"; args_label...)
-    Label(fig[5, 5], "Seed:"; args_label...)
-
-    args_tb = (; halign = :left, textpadding = (6,6,6,6), validator = Float64)
-    tb_agents     = Textbox(fig[2, 6], placeholder = "25 agents"; args_tb...)
-    tb_time       = Textbox(fig[3, 6], placeholder = "0.01 seconds"; args_tb...)
-    tb_visibility = Textbox(fig[4, 6], placeholder = "25 meters"; args_tb...)
-    tb_seed       = Textbox(fig[5, 6], placeholder = "42"; args_tb...)
-
-    on(tb_agents.stored_string) do s
-        frequency[] = parse(Float64, s)
+        fig[8, 5:6] = button_grid = GridLayout(tellwidth = false)
+        buttonlabels = ["Run/Stop", "Step", "Reset"]
+        buttons = button_grid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
+    else
+        textboxes = buttons = nothing
     end
 
-    scatter!(ax_main, rob_plot["pos"];
+    # now add the data
+    scatter!(ax_main, plot_dict["pos"];
              marker = robot_poly,
-             rotations = rob_plot["rot"],
+             rotations = plot_dict["rot"],
              strokewidth = 3,
-             strokecolor = rob_plot["status"], # contour color is status (alive/dead)
+             strokecolor = plot_dict["status"], # contour color is status (alive/dead)
              color = model.colors,     # unique color, same for trail
              markersize = 11
-    )
+             )
 
     # plot trajectories
     for id in allids(model)
-        lines!(ax_main, rob_plot["hist"][id];
+        lines!(ax_main, plot_dict["hist"][id];
                linewidth = 3,
                color = traj_color[id]
-        )
+               )
     end
 
     # plot visibility range
     for id in allids(model)
-        arc!(ax_main, model[id].pos, model[id].vis_range, -π, π;
-               linestyle = :dash,
-               linewidth = 1,
-               color = model.colors[id]
-        )
+        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
+             linestyle = :dash,
+             linewidth = 1,
+             color = model.colors[id]
+             )
     end
 
     # generate visibility graph with id colors
-    graphplot!(ax_graph, rob_plot["graph"], node_color=model.colors)
+    graphplot!(ax_graph, plot_dict["graph"], node_color=model.colors)
 
-    return fig, rob_plot
+    return fig, plot_dict, buttons, textboxes
 end
 
 # this function updates the data in the model using the robot step then updates
 # the observables (positions, trajectory and markers) related to the plot
 #function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_status, rob_rot, vis_graph)
-function animation_step!(model, agent_step!, rob_plot)
+function animation_step!(model, agent_step!, plot_dict)
     # update robot positions
     step!(model, agent_step!)
 
     # update positions
-    rob_plot["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
+    plot_dict["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
 
     # update trajectories
-    for (id, buf) in enumerate(rob_plot["hist"])
-        push!(buf[], rob_plot["pos"][][id])
+    for (id, buf) in enumerate(plot_dict["hist"])
+        push!(buf[], plot_dict["pos"][][id])
         buf[] = buf[]
     end
 
     # update the markers orientation and color
-    rob_plot["status"][] = robot_status.(allagents(model))
-    rob_plot["rot"][] = [r.θ for r in allagents(model)]
+    plot_dict["status"][] = robot_status.(allagents(model))
+    plot_dict["rot"][] = [r.θ for r in allagents(model)]
+
+    # update the visibility and communication ranges
+    for (id,r) in enumerate(allagents(model))
+        plot_dict["vis"][id][1][] = r.pos
+        plot_dict["vis"][id][2][] = r.vis_range
+
+        plot_dict["com"][id][1][] = r.pos
+        plot_dict["com"][id][2][] = r.com_range
+    end
+
+    rob_vis = [(r.pos, r.vis_range) for r in allagents(model)]
+    rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
 
     # update visibility graph
-    rob_plot["graph"][] = visibility_graph(model)
+    plot_dict["graph"][] = visibility_graph(model)
+
     return
+end
+
+function run_animation!(model, angent_step!; n_steps)
+    fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
+
+    for _ ∈ 1:n_steps
+        animation_step!(model, agent_simple_step!, plot_dict)
+        sleep(model.δt)
+    end
+end
+
+function make_animation!(model, angent_step!; n_frames, steps_per_frame=3)
+    frames = 1:n_frames
+
+    fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
+
+    filename = string("essaim_A", nagents(model), "_T", model.δt, "_V", model[1].vis_range, "_S", model.seed, "__f", n_frames, "__sf", steps_per_frame, ".mp4")
+
+    record(fig, plotsdir(filename), frames; framerate = 60) do i
+        for j in 1:steps_per_frame  # each frame is stepped n times
+            animation_step!(model, agent_simple_step!, plot_dict)
+        end
+    end
+end
+
+
+function run_simulator!(model, agent_step!)
+    fig, plot_dict, buttons, textboxes = make_figure(model)
+    model = Observable(model)
+
+    # get starting values for the model
+    seed = Observable(model[].seed)
+    nb_agents = Observable(nagents(model[]))
+    vis_range = Observable(model[][1].vis_range)
+    dt = Observable(model[].δt)
+
+    # deconstruct to access buttons and textboxes
+    b_run, b_step, b_reset = buttons
+    tb_agents, tb_dt, tb_vis, tb_seed = textboxes
+
+    # this is a simple flag for the information to be running or not
+    is_running = Observable(false)
+
+    # what happens when we click on the button:
+    # (1) we flip the running flag
+    on(b_run.clicks) do clicks
+        is_running[] = !is_running[]
+    end
+
+    # (2) we make it execute the animation step
+    on(b_run.clicks) do clicks
+        println("Pressed RUN")
+        @async while is_running[]       # while the running flag is true
+            isopen(fig.scene) || break  # and the simulation is still open
+            animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
+            sleep(model.δt)
+        end
+    end
+
+    # the step button only advances one cycle
+    on(b_step.clicks) do clicks
+        println("Pressed STEP")
+        if !is_running[]       # while the running flag is true
+            animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
+        end
+    end
+
+    on(tb_agents.stored_string) do s
+        println("received new number of agents ", s)
+        nb_agents[] = parse(Int64, tb_agents.stored_string[])
+    end
+
+    on(tb_dt.stored_string) do s
+        println("received new δt ", s)
+        dt[] = parse(Float64, tb_dt.stored_string[])
+    end
+
+    on(tb_seed.stored_string) do s
+        println("received new seed ", s)
+        seed[] = parse(Int64, tb_seed.stored_string[])
+    end
+
+    on(tb_vis.stored_string) do s
+        println("received new visibility range ", s)
+        vis_range[] = parse(Float64, tb_vis.stored_string[])
+    end
+
+    # the reset button starts a new model with the parameters and relaunches the figure
+    on(b_reset.clicks) do clicks
+        println("Pressed RESET")
+        model = initialize_model(; seed = seed[], δt = dt[], N = nb_agents[], com_range = 10., vis_range = vis_range[], history_size = 500)
+
+        empty!(fig.content[1])
+        empty!(fig.content[2])
+
+        fig, plot_dict, buttons, textboxes = make_figure(model; plot_dict=plot_dict, buttons=buttons, textboxes=textboxes)
+
+        animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
+    end
+
+    #TODO add listener to update textboxes, no need to do it in the animation function
 end
 
 # example usage
@@ -183,24 +296,10 @@ end
 # model = initialize_model(;extent=(10.,10.))
 # agent_simple_step!(r1, model)
 
-model = initialize_model(;
-                         history_size=500,
-                         δt=0.01,
-                         N=5,
-                         com_range=10.,
-                         vis_range=10.,
-)
+model = initialize_model(; seed = 1, δt = 0.01, N = 50, com_range = 25., vis_range = 10., history_size = 300)
 
-fig, rob_plot = make_figure(model)
+run_animation!(model, agent_simple_step!; n_steps=1000)
 
-for i ∈ 1:2500
-    animation_step!(model, agent_simple_step!, rob_plot)
-    sleep(model.δt)
-end
-#
-# frames = 1:1000
-# record(fig, plotsdir("essaim.mp4"), frames; framerate = 60) do i
-#     for j in 1:3  # each frame is stepped 3 times
-#         animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_marker, rob_status)
-#     end
-# end
+make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
+
+run_simulator!(model, agent_simple_step!)
