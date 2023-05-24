@@ -11,7 +11,6 @@ using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
 using Makie.Colors
-using Printf
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
 const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
@@ -77,24 +76,21 @@ function make_figure(model; interactive=true)
     )
 
     # create a new figure
-    #fig = Figure(;resolution=(1200,800));
-    fig = Figure(); display(fig)
+    fig = Figure(;resolution=(1000,700)); display(fig)
 
     ax_main  = Axis(
         fig[1:16,1:4],
         title="Dynamic continuous average consensus",
         aspect = DataAspect(),
-        limits = (0,model.space.extent[1], 0, model.space.extent[2]),
+        limits = (-model.space.extent[1],model.space.extent[1], -model.space.extent[2], model.space.extent[2]),
         xminorticksvisible = true,
         xminorticks = IntervalsBetween(5),
         yminorticksvisible = true,
         yminorticks = IntervalsBetween(5)
     )
 
-    interactive = false
-
     ax_graph = Axis(
-        fig[(interactive ? 9 : 2):15 ,5:6],
+        fig[(interactive ? 9 : 2):16 ,5:6],
         title="Visibility graph",
         tellwidth=false
     )
@@ -107,7 +103,7 @@ function make_figure(model; interactive=true)
         texts = ["Number of agents:", "Time step (s):", "Visibility radius (m):", "Seed:"]
         placeholders = [Observable(string(nagents(model))), Observable(string(model.δt)), Observable(string(model[1].vis_range)), Observable(string(model.seed))]
         control_grid[1:4,1] = [Label(fig, text=t; justification = :left, halign = :left) for t in texts]
-        textboxes = control_grid[1:4,2] = [Textbox(fig, placeholder=p; halign = :right, textpadding = (5,5,5,5)) for p in placeholders]
+        textboxes = control_grid[1:4,2] = [Textbox(fig, placeholder=p; halign = :right, textpadding = (5,5,5,5), width=80) for p in placeholders]
 
         fig[8, 5:6] = button_grid = GridLayout(tellwidth = false)
         buttonlabels = ["Run/Stop", "Step", "Reset"]
@@ -149,6 +145,7 @@ function make_figure(model; interactive=true)
     return fig, plot_dict, buttons, textboxes
 end
 
+
 # this function updates the data in the model using the robot step then updates
 # the observables (positions, trajectory and markers) related to the plot
 #function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_status, rob_rot, vis_graph)
@@ -187,16 +184,16 @@ function animation_step!(model, agent_step!, plot_dict)
     return
 end
 
-function run_animation!(model, angent_step!; n_steps)
+function run_animation!(model, agent_step!; n_steps)
     fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
 
     for _ ∈ 1:n_steps
-        animation_step!(model, agent_simple_step!, plot_dict)
+        animation_step!(model, agent_step!, plot_dict)
         sleep(model.δt)
     end
 end
 
-function make_animation!(model, angent_step!; n_frames, steps_per_frame=3)
+function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
     frames = 1:n_frames
 
     fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
@@ -205,14 +202,53 @@ function make_animation!(model, angent_step!; n_frames, steps_per_frame=3)
 
     record(fig, plotsdir(filename), frames; framerate = 60) do i
         for j in 1:steps_per_frame  # each frame is stepped n times
-            animation_step!(model, agent_simple_step!, plot_dict)
+            animation_step!(model, agent_step!, plot_dict)
         end
     end
 end
 
+function restart_plot(model, plot_dict)
+    # update the observables that don't need to allocate more space
+    plot_dict["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
+    plot_dict["status"][] = robot_status.(allagents(model))
+    plot_dict["rot"][] = [r.θ for r in allagents(model)]
+    plot_dict["graph"][] = visibility_graph(model)
+
+
+    # TODO: increase size of the circular buffer if needed
+    for _ in 1:model[].history_size
+        for (id, buf) in enumerate(plot_dict["hist"])
+            fill!(buf[], plot_dict["pos"][][id])
+            buf[] = buf[]
+        end
+
+       # for (id, r) in enumerate(allagents(model[]))
+       #     !(plot_dict["hist"][id][], plot_dict["pos"][][id])
+       #     plot_dict["hist"][id][] = plot_dict["hist"][id][]
+       # end
+    end
+
+#    rob_hist = [Observable(CircularBuffer{Point2f}(model.history_size)) for _ in 1:N]
+#    for (id, buf) in enumerate(rob_hist)
+#        fill!(buf[], rob_pos[][id])
+#    end
+
+
+    # TODO: increase size of visibility and communication lists
+    for (id,r) in enumerate(allagents(model[]))
+        plot_dict["vis"][id][1][] = r.pos
+        plot_dict["vis"][id][2][] = r.vis_range
+
+        plot_dict["com"][id][1][] = r.pos
+        plot_dict["com"][id][2][] = r.com_range
+    end
+
+#    rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
+end
+
 
 function run_simulator!(model, agent_step!)
-    fig, plot_dict, buttons, textboxes = make_figure(model)
+    fig, plot_dict, buttons, textboxes = make_figure(model; interactive=true)
     model = Observable(model)
 
     # get starting values for the model
@@ -239,19 +275,20 @@ function run_simulator!(model, agent_step!)
         println("Pressed RUN")
         @async while is_running[]       # while the running flag is true
             isopen(fig.scene) || break  # and the simulation is still open
-            animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
-            sleep(model.δt)
+            animation_step!(model[], agent_step!, plot_dict)
+            sleep(model[].δt)
         end
     end
 
     # the step button only advances one cycle
     on(b_step.clicks) do clicks
         println("Pressed STEP")
-        if !is_running[]       # while the running flag is true
-            animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
+        if !is_running[]
+            animation_step!(model[], agent_step!, plot_dict)
         end
     end
 
+    #TODO add listener to update textboxes, no need to do it in the animation function
     on(tb_agents.stored_string) do s
         println("received new number of agents ", s)
         nb_agents[] = parse(Int64, tb_agents.stored_string[])
@@ -275,17 +312,15 @@ function run_simulator!(model, agent_step!)
     # the reset button starts a new model with the parameters and relaunches the figure
     on(b_reset.clicks) do clicks
         println("Pressed RESET")
-        model = initialize_model(; seed = seed[], δt = dt[], N = nb_agents[], com_range = 10., vis_range = vis_range[], history_size = 500)
+        model[] = initialize_model(; seed = seed[], δt = dt[], N = nb_agents[], com_range = 10., vis_range = vis_range[], history_size = 500)
 
-        empty!(fig.content[1])
-        empty!(fig.content[2])
+        # no need to empty, it already updates well in the animation step
+        # gotta fix the model dependent sizes
+#        empty!(fig.content[1])
+#        empty!(fig.content[2])
 
-        fig, plot_dict, buttons, textboxes = make_figure(model; plot_dict=plot_dict, buttons=buttons, textboxes=textboxes)
-
-        animation_step!(model, agent_simple_step!, plot_dict, textboxes)  # execute an animation step
+        restart_plot(model[], plot_dict)
     end
-
-    #TODO add listener to update textboxes, no need to do it in the animation function
 end
 
 # example usage
@@ -296,7 +331,9 @@ end
 # model = initialize_model(;extent=(10.,10.))
 # agent_simple_step!(r1, model)
 
-model = initialize_model(; seed = 1, δt = 0.01, N = 50, com_range = 25., vis_range = 10., history_size = 300)
+model = initialize_model(; seed = 1, δt = 0.001, N = 10, com_range = 25., vis_range = 50., history_size = 300, extent=(100.,100.), speed=1.0)
+
+run_animation!(model, agent_laplacian_step!; n_steps=2500)
 
 run_animation!(model, agent_simple_step!; n_steps=1000)
 

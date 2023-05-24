@@ -10,6 +10,7 @@ using Graphs
 using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
+using Makie.Colors
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
 const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])

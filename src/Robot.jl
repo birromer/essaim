@@ -68,22 +68,20 @@ function initialize_model(;
 end
 
 # we define how each robot behaves, at
-function agent_laplacian_step!(robot, model)
-    neighbor_ids = nearby_ids(robot, model, robot.vis_range)
+function agent_laplacian_step!(r1, model)
+    neighbours = nearby_agents(r1, model, r1.vis_range)
+    σ = 0.2
 
+    dpos = r1.pos
+    for r2 ∈ neighbours
+        dpos = dpos .- σ .* (r1.pos .- r2.pos)
+    end
 
+    r1.θ̇ = 0
+    r1.vel = dpos
 
-
-
-
-
-    robot.pos = robot.pos .+ robot.vel .* model.δt
-    robot.θ += robot.θ̇ * model.δt
-
-    robot.vel = (
-        robot.pos[1]*cos(robot.θ) - robot.pos[2]*sin(robot.θ),
-        robot.pos[1]*sin(robot.θ) + robot.pos[2]*cos(robot.θ)
-    )
+    r1.pos = r1.pos .+ r1.vel .* model.δt
+    r1.θ = atan(r1.vel[2], r1.vel[1])
 
     return
 end
