@@ -24,4 +24,4 @@ run_animation!(model, agent_laplacian_step!; n_steps=2500)
 
 #make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
 
-run_simulator!(model, agent_simple_step!)
+run_simulator!(model, agent_laplacian_step!)
