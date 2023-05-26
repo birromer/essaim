@@ -19,8 +19,6 @@ const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 
 robot_status(robot::Robot) = robot.alive == true ? :darkgreen : :red
 
 function visibility_graph(model)
-#    neighbours = [nearby_ids_exact(r, model, r.vis_range) for r in allagents(model)]
-
     g = SimpleGraph(nagents(model))
     for (id1,r1) in enumerate(allagents(model))
         for id2 in nearby_ids_exact(r1, model, r1.vis_range)
@@ -33,11 +31,8 @@ function visibility_graph(model)
     g
 end
 
-# for testing
-model = initialize_model(; history_size = 500, δt = 0.01, N = 10, com_range = 10., vis_range = 10., seed = 1)
-
 # initialize figure for the animation
-function make_figure(model; interactive=true)
+function make_figure(model, agent_step!; interactive=true)
     N = nagents(model)
 
     # first we generate the markers for the current state of the robots
@@ -94,22 +89,8 @@ function make_figure(model; interactive=true)
         tellwidth=false
     )
     hidedecorations!(ax_graph)
-    ax_graph.aspect = DataAspect()
-
-    if interactive
-        # add the control and parameter input options
-        fig[2:6, 5:6] = control_grid = GridLayout(tellwidth = false, tellheight = false)
-        texts = ["Number of agents:", "Time step (s):", "Visibility radius (m):", "Seed:"]
-        placeholders = [Observable(string(nagents(model))), Observable(string(model.δt)), Observable(string(model[1].vis_range)), Observable(string(model.seed))]
-        control_grid[1:4,1] = [Label(fig, text=t; justification = :left, halign = :left) for t in texts]
-        textboxes = control_grid[1:4,2] = [Textbox(fig, placeholder=p; halign = :right, textpadding = (5,5,5,5), width=80) for p in placeholders]
-
-        fig[8, 5:6] = button_grid = GridLayout(tellwidth = false)
-        buttonlabels = ["Run/Stop", "Step", "Reset"]
-        buttons = button_grid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
-    else
-        textboxes = buttons = nothing
-    end
+#    ax_graph.aspect = DataAspect()
+#    colsize!(fig.layout, Aspect(1,1.))
 
     # now add the data
     scatter!(ax_main, plot_dict[:pos];
@@ -142,7 +123,88 @@ function make_figure(model; interactive=true)
     # generate visibility graph with id colors
     graphplot!(ax_graph, plot_dict[:graph], node_color=model.colors)
 
-    return fig, plot_dict, buttons, textboxes
+    if interactive
+        # add the control and parameter input options
+        fig[2:6, 5:6] = control_grid = GridLayout(tellwidth = false, tellheight = false)
+        texts = ["Number of agents:", "Time step (s):", "Visibility radius (m):", "Seed:"]
+        placeholders = [Observable(string(nagents(model))), Observable(string(model.δt)), Observable(string(model[1].vis_range)), Observable(string(model.seed))]
+        control_grid[1:4,1] = [Label(fig, text=t; justification = :left, halign = :left) for t in texts]
+        textboxes = control_grid[1:4,2] = [Textbox(fig, placeholder=p; halign = :right, textpadding = (5,5,5,5), width=80) for p in placeholders]
+
+        fig[8, 5:6] = button_grid = GridLayout(tellwidth = false)
+        buttonlabels = ["Run/Stop", "Step", "Reset"]
+        buttons = button_grid[1, 1:3] = [Button(fig, label = l) for l in buttonlabels]
+
+        # deconstruct to access buttons and textboxes
+        b_run, b_step, b_reset = buttons
+        tb_agents, tb_dt, tb_vis, tb_seed = textboxes
+
+        # flag for running simulation
+        is_running = Observable(false)
+
+        # dictionary of interactions
+        interaction_dict = Dict(
+            :nb_agents => Observable(nagents(model)),
+            :dt => Observable(model.δt),
+            :seed => Observable(model.seed),
+            :vis_range => Observable(model[1].vis_range),
+            :reset => Observable(false)
+        )
+
+        # what happens when we click on the button:
+        # (1) we flip the running flag
+        on(b_run.clicks) do clicks
+            is_running[] = !is_running[]
+        end
+
+        # (2) we make it execute the animation step
+        on(b_run.clicks) do clicks
+            println("Pressed RUN")
+            @async while is_running[]       # while the running flag is true
+                isopen(fig.scene) || break  # and the simulation is still open
+                animation_step!(model, agent_step!, plot_dict)
+                sleep(model.δt)
+            end
+        end
+
+        # the step button only advances one cycle
+        on(b_step.clicks) do clicks
+            println("Pressed STEP")
+            if !is_running[]
+                animation_step!(model, agent_step!, plot_dict)
+            end
+        end
+
+        on(tb_agents.stored_string) do s
+            println("received new number of agents ", s)
+            interaction_dict[:nb_agents][] = parse(Int64, tb_agents.stored_string[])
+        end
+
+        on(tb_dt.stored_string) do s
+            println("received new δt ", s)
+            interaction_dict[:dt][] = parse(Float64, tb_dt.stored_string[])
+        end
+
+        on(tb_seed.stored_string) do s
+            println("received new seed ", s)
+            interaction_dict[:seed][] = parse(Int64, tb_seed.stored_string[])
+        end
+
+        on(tb_vis.stored_string) do s
+            println("received new visibility range ", s)
+            interaction_dict[:vis_range][] = parse(Float64, tb_vis.stored_string[])
+        end
+
+        on(b_reset.clicks) do clicks
+            println("Pressed RESET")
+            interaction_dict[:reset][] = true
+        end
+
+    else
+        interaction_dict = nothing
+    end
+
+    return fig, plot_dict, interaction_dict
 end
 
 
@@ -185,9 +247,10 @@ function animation_step!(model, agent_step!, plot_dict)
 end
 
 function run_animation!(model, agent_step!; n_steps)
-    fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
+    fig, plot_dict, _ = make_figure(model, agent_step!; interactive=false)
 
     for _ ∈ 1:n_steps
+        isopen(fig.scene) || break  # and the simulation is still open
         animation_step!(model, agent_step!, plot_dict)
         sleep(model.δt)
     end
@@ -196,7 +259,7 @@ end
 function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
     frames = 1:n_frames
 
-    fig, plot_dict, buttons, textboxes = make_figure(model, interactive=false)
+    fig, plot_dict, _ = make_figure(model, agent_step!; interactive=false)
 
     filename = string("essaim_A", nagents(model), "_T", model.δt, "_V", model[1].vis_range, "_S", model.seed, "__f", n_frames, "__sf", steps_per_frame, ".mp4")
 
@@ -207,199 +270,91 @@ function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
     end
 end
 
-function restart_plot(fig, model_obs, plot_dict_obs)
+function run_simulator!(model, agent_step!)
+    fig, plot_dict, interaction_dict = make_figure(model, agent_step!; interactive=true)
 
-    # update the observables that don't need to allocate more space
-    plot_dict[][:pos][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model[])]
-    plot_dict[][:status][] = robot_status.(allagents(model[]))
-    plot_dict[][:rot][] = [r.θ for r in allagents(model[])]
-    plot_dict[][:graph][] = visibility_graph(model[])
+    fig = Observable(fig)
+    plot_dict = Observable(plot_dict)
+    interaction_dict = Observable(interaction_dict)
 
-    oldN = size(plot_dict[][:hist],1)
-    N = nagents(model[])
+#    reset = Observable(false)
 
-    ax_main = fig.content[1]
+    # we need to relaunch the listener at each reset
+    on(interaction_dict[][:reset]) do reset
+        println("Pressed RESET")
+        println("Reset value: ", reset)
 
-#    model[oldN+1:N]
+        model = initialize_model(;
+                                 seed = interaction_dict[][:seed][],
+                                 δt = interaction_dict[][:dt][],
+                                 N = interaction_dict[][:nb_agents][],
+                                 com_range = interaction_dict[][:vis_range][],
+                                 vis_range = interaction_dict[][:vis_range][],
+                                 history_size = model.history_size,
+                                 extent = model.space.extent,
+                                 speed = 1.0
+                                 )
 
-    # if we increse the number of agents, we have to create the observables
-    # for the visibility radius and the trajectory, then add to the existing plot
-    if N > oldN
-
-        # the old agents must simply be updated
-        for id ∈ 1:oldN
-            fill!(plot_dict[][:hist][id][], plot_dict[][:pos][][3])
-            plot_dict[][:hist][id][] = plot_dict[][:hist][id][]
-
-            plot_dict[][:vis][id][1][] = model[][id].pos
-            plot_dict[][:vis][id][2][] = model[][id].vis_range
-
-            plot_dict[][:com][id][1][] = model[][id].pos
-            plot_dict[][:com][id][2][] = model[][id].com_range
-        end
-
-        # the new agents have to have their memory allocated
-        for id ∈ oldN+1:N
-            id = 3
-            id = 4
-            push!(plot_dict[][:hist], Observable(CircularBuffer{Point2f}(model[].history_size)))
-            fill!(plot_dict[][:hist][id][], plot_dict[][:pos][][id])
-            plot_dict[][:hist][id][] = plot_dict[][:hist][id][]
-
-            push!(plot_dict[][:traj_color], Observable([RGBAf(model[].colors[id].r, model[].colors[id].g, model[].colors[id].b, (i/model[].history_size)^2) for i in 1:model[].history_size]))
-
-
-            lines!(ax_main, plot_dict[][:hist][id];
-               linewidth = 3,
-               color = plot_dict[][:traj_color][id]
-            )
-
-            push!(plot_dict[][:vis], (Observable(model[][id].pos), Observable(model[][id].vis_range)))
-            push!(plot_dict[][:com], (Observable(model[][id].pos), Observable(model[][id].com_range)))
-
-            arc!(ax_main, plot_dict[][:vis][id][1], plot_dict[][:vis][id][2], 0, 2π;
-               linestyle = :dash,
-               linewidth = 1,
-               color = model[].colors[id]
-            )
-        end
-    else # if we have less agents, we have to remove the extra plots
-#        for id ∈ N+1:oldN
-#            delete!(ax_main[id*2+1]) # delete
-#        end
+        # the reset button starts a new model with the parameters and relaunches the figure
+        fig[], plot_dict[], interaction_dict[] = make_figure(model, agent_step!; interactive=true)
     end
-
-#    # TODO: check if the plot updates with this, it probably only has the original indexes there
-#    for (id, r) in enumerate(allagents(model))
-#        fill!(plot_dict["hist"][id][], plot_dict["pos"][][id])
-#        plot_dict["hist"][id][] = plot_dict["hist"][id][]
-#
-#        lines!(ax_main, plot_dict["hist"][id];
-#               linewidth = 3,
-#               color = traj_color[id]
-#               )
-#    end
-
-    # plot visibility range
-#    for id in allids(model)
-#        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
-#             linestyle = :dash,
-#             linewidth = 1,
-#             color = model.colors[id]
-#             )
-#    end
-#
-##    rob_hist = [Observable(CircularBuffer{Point2f}(model.history_size)) for _ in 1:N]
-##    for (id, buf) in enumerate(rob_hist)
-##        fill!(buf[], rob_pos[][id])
-##    end
-#
-#
-#    # TODO: increase size of visibility and communication lists
-#    for (id,r) in enumerate(allagents(model))
-#        plot_dict["vis"][id][1][] = r.pos
-#        plot_dict["vis"][id][2][] = r.vis_range
-#
-#        plot_dict["com"][id][1][] = r.pos
-#        plot_dict["com"][id][2][] = r.com_range
-#    end
-#
-#    for id in allids(model)
-#        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
-#             linestyle = :dash,
-#             linewidth = 1,
-#             color = model.colors[id]
-#             )
-#    end
-
-#    rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
-     return fig
 end
 
-
 function run_simulator!(model, agent_step!)
-    fig, plot_dict, buttons, textboxes = make_figure(model; interactive=true)
+    fig, plot_dict, interaction_dict = make_figure(model; interactive=true)
 
-    # make everything used by the listeners also observable
-    model = Observable(model)
+    fig = Observable(fig)
     plot_dict = Observable(plot_dict)
+    interaction_dict = Observable(interaction_dict)
 
-    # TODO: Remove
-    agent_step! = agent_laplacian_step!
+#    reset = Observable(false)
 
-    # get starting values for the model
-    seed = Observable(model[].seed)
-    nb_agents = Observable(nagents(model[]))
-    vis_range = Observable(model[][1].vis_range)
-    dt = Observable(model[].δt)
-
-    # deconstruct to access buttons and textboxes
-    b_run, b_step, b_reset = buttons
-    tb_agents, tb_dt, tb_vis, tb_seed = textboxes
-
-    # this is a simple flag for the information to be running or not
-    is_running = Observable(false)
-
-    # what happens when we click on the button:
-    # (1) we flip the running flag
-    on(b_run.clicks) do clicks
-        is_running[] = !is_running[]
-    end
-
-    # (2) we make it execute the animation step
-    on(b_run.clicks) do clicks
-        println("Pressed RUN")
-        @async while is_running[]       # while the running flag is true
-            isopen(fig.scene) || break  # and the simulation is still open
-            animation_step!(model[], agent_step!, plot_dict[])
-            sleep(model[].δt)
-
-            model[] = model[]
-            plot_dict[] = plot_dict[]
-        end
-    end
-
-    # the step button only advances one cycle
-    on(b_step.clicks) do clicks
-        println("Pressed STEP")
-        if !is_running[]
-            animation_step!(model[], agent_step!, plot_dict[])
-            model[] = model[]
-            plot_dict[] = plot_dict[]
-        end
-    end
-
-    #TODO add listener to update textboxes, no need to do it in the animation function
-    on(tb_agents.stored_string) do s
-        println("received new number of agents ", s)
-        nb_agents[] = parse(Int64, tb_agents.stored_string[])
-    end
-
-    on(tb_dt.stored_string) do s
-        println("received new δt ", s)
-        dt[] = parse(Float64, tb_dt.stored_string[])
-    end
-
-    on(tb_seed.stored_string) do s
-        println("received new seed ", s)
-        seed[] = parse(Int64, tb_seed.stored_string[])
-    end
-
-    on(tb_vis.stored_string) do s
-        println("received new visibility range ", s)
-        vis_range[] = parse(Float64, tb_vis.stored_string[])
-    end
-
-    # the reset button starts a new model with the parameters and relaunches the figure
-    on(b_reset.clicks) do clicks
+    # we need to relaunch the listener at each reset
+    on(interaction_dict[][:reset]) do reset
         println("Pressed RESET")
-        model[] = initialize_model(; seed=seed[], δt=dt[], N=nb_agents[], com_range=vis_range[], vis_range=vis_range[],
-                                   history_size=model[].history_size, extent=model[].space.extent, speed=1.0)
+        println("Reset value: ", reset)
 
-#        fig, plot_dict, buttons, textboxes = make_figure(model[]; interactive=true)
+        model = initialize_model(;
+                                 seed = interaction_dict[][:seed][],
+                                 δt = interaction_dict[][:dt][],
+                                 N = interaction_dict[][:nb_agents][],
+                                 com_range = interaction_dict[][:vis_range][],
+                                 vis_range = interaction_dict[][:vis_range][],
+                                 history_size = model.history_size,
+                                 extent = model.space.extent,
+                                 speed = 1.0
+                                 )
 
-       fig = restart_plot(fig, model, plot_dict)
+        # the reset button starts a new model with the parameters and relaunches the figure
+        fig[], plot_dict[], interaction_dict[] = make_figure(model; interactive=true)
     end
+
+#    while true
+#        isopen(fig[].scene) || break  # and the simulation is still open
+#        if interaction_dict[][:reset][]
+#            # we need to relaunch the listener at each reset
+#            on(interaction_dict[][:reset]) do reset
+#                println("Pressed RESET")
+#                println("Reset value: ", reset)
+#
+#                model = initialize_model(;
+#                                         seed = interaction_dict[][:seed][],
+#                                         δt = interaction_dict[][:dt][],
+#                                         N = interaction_dict[][:nb_agents][],
+#                                         com_range = interaction_dict[][:vis_range][],
+#                                         vis_range = interaction_dict[][:vis_range][],
+#                                         history_size = model.history_size,
+#                                         extent = model.space.extent,
+#                                         speed = 1.0
+#                                         )
+#
+#                # the reset button starts a new model with the parameters and relaunches the figure
+#                fig[], plot_dict[], interaction_dict[] = make_figure(model; interactive=true)
+#            end
+#        end
+#        sleep(model.δt)
+#    end
+
 end
 
 # example usage
@@ -411,8 +366,6 @@ end
 # agent_simple_step!(r1, model)
 
 model = initialize_model(; seed = 1, δt = 0.001, N = 2, com_range = 25., vis_range = 50., history_size = 500, extent=(300.,300.), speed=1.0)
-
-# run_animation!(model, agent_simple_step!; n_steps=1000)
 
 run_animation!(model, agent_laplacian_step!; n_steps=2500)
 

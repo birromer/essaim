@@ -16,7 +16,7 @@ model = initialize_model(;
     speed=1.0
 )
 
-# fig, plot_dict, buttons, textboxes = make_figure(model)
+# fig, plot_dict, interaction_dict = make_figure(model, agent_laplacian_step!)
 
 run_animation!(model, agent_laplacian_step!; n_steps=2500)
 
