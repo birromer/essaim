@@ -19,11 +19,11 @@ const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 
 robot_status(robot::Robot) = robot.alive == true ? :darkgreen : :red
 
 function visibility_graph(model)
-    neighbours = [nearby_ids(r, model, r.vis_range) for r in allagents(model)]
+#    neighbours = [nearby_ids_exact(r, model, r.vis_range) for r in allagents(model)]
 
     g = SimpleGraph(nagents(model))
     for (id1,r1) in enumerate(allagents(model))
-        for id2 in nearby_ids(r1, model, r1.vis_range)
+        for id2 in nearby_ids_exact(r1, model, r1.vis_range)
             if id1 != id2
                 add_edge!(g, id1, id2)
             end
@@ -37,8 +37,6 @@ end
 model = initialize_model(; history_size = 500, δt = 0.01, N = 10, com_range = 10., vis_range = 10., seed = 1)
 
 # initialize figure for the animation
-# TODO: handle model as an observer? probably best to do this in the run_simulation! and simulation_step!,
-# but think on how this affects here
 function make_figure(model; interactive=true)
     N = nagents(model)
 
@@ -60,19 +58,20 @@ function make_figure(model; interactive=true)
     rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
 
     # different color for each robot
-    traj_color = [[RGBAf(model.colors[r].r, model.colors[r].g, model.colors[r].b, (i/model.history_size)^2) for i in 1:model.history_size] for r in 1:N]
+    traj_color = [Observable([RGBAf(model.colors[r].r, model.colors[r].g, model.colors[r].b, (i/model.history_size)^2) for i in 1:model.history_size]) for r in 1:N]
 
     # make the visibility graph to be displayed in the side
     vis_graph = Observable(visibility_graph(model))
 
     plot_dict = Dict(
-        "pos" => rob_pos,
-        "hist" => rob_hist,
-        "status" => rob_status,
-        "rot" => rob_rot,
-        "vis" => rob_vis,
-        "com" => rob_com,
-        "graph" => vis_graph
+        :pos => rob_pos,
+        :hist => rob_hist,
+        :status => rob_status,
+        :rot => rob_rot,
+        :vis => rob_vis,
+        :com => rob_com,
+        :graph => vis_graph,
+        :traj_color => traj_color
     )
 
     # create a new figure
@@ -113,18 +112,18 @@ function make_figure(model; interactive=true)
     end
 
     # now add the data
-    scatter!(ax_main, plot_dict["pos"];
+    scatter!(ax_main, plot_dict[:pos];
              marker = robot_poly,
-             rotations = plot_dict["rot"],
+             rotations = plot_dict[:rot],
              strokewidth = 3,
-             strokecolor = plot_dict["status"], # contour color is status (alive/dead)
+             strokecolor = plot_dict[:status], # contour color is status (alive/dead)
              color = model.colors,     # unique color, same for trail
              markersize = 11
              )
 
     # plot trajectories
     for id in allids(model)
-        lines!(ax_main, plot_dict["hist"][id];
+        lines!(ax_main, plot_dict[:hist][id];
                linewidth = 3,
                color = traj_color[id]
                )
@@ -132,7 +131,8 @@ function make_figure(model; interactive=true)
 
     # plot visibility range
     for id in allids(model)
-        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
+        println("Id vis: ", id, " at pos", plot_dict[:vis][id][1][], " and radius ", plot_dict[:vis][id][2][])
+        arc!(ax_main, plot_dict[:vis][id][1], plot_dict[:vis][id][2], 0, 2π;
              linestyle = :dash,
              linewidth = 1,
              color = model.colors[id]
@@ -140,7 +140,7 @@ function make_figure(model; interactive=true)
     end
 
     # generate visibility graph with id colors
-    graphplot!(ax_graph, plot_dict["graph"], node_color=model.colors)
+    graphplot!(ax_graph, plot_dict[:graph], node_color=model.colors)
 
     return fig, plot_dict, buttons, textboxes
 end
@@ -154,32 +154,32 @@ function animation_step!(model, agent_step!, plot_dict)
     step!(model, agent_step!)
 
     # update positions
-    plot_dict["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
+    plot_dict[:pos][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
 
     # update trajectories
-    for (id, buf) in enumerate(plot_dict["hist"])
-        push!(buf[], plot_dict["pos"][][id])
+    for (id, buf) in enumerate(plot_dict[:hist])
+        push!(buf[], plot_dict[:pos][][id])
         buf[] = buf[]
     end
 
     # update the markers orientation and color
-    plot_dict["status"][] = robot_status.(allagents(model))
-    plot_dict["rot"][] = [r.θ for r in allagents(model)]
+    plot_dict[:status][] = robot_status.(allagents(model))
+    plot_dict[:rot][] = [r.θ for r in allagents(model)]
 
     # update the visibility and communication ranges
     for (id,r) in enumerate(allagents(model))
-        plot_dict["vis"][id][1][] = r.pos
-        plot_dict["vis"][id][2][] = r.vis_range
+        plot_dict[:vis][id][1][] = r.pos
+        plot_dict[:vis][id][2][] = r.vis_range
 
-        plot_dict["com"][id][1][] = r.pos
-        plot_dict["com"][id][2][] = r.com_range
+        plot_dict[:com][id][1][] = r.pos
+        plot_dict[:com][id][2][] = r.com_range
     end
 
     rob_vis = [(r.pos, r.vis_range) for r in allagents(model)]
     rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
 
     # update visibility graph
-    plot_dict["graph"][] = visibility_graph(model)
+    plot_dict[:graph][] = visibility_graph(model)
 
     return
 end
@@ -207,49 +207,125 @@ function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
     end
 end
 
-function restart_plot(model, plot_dict)
+function restart_plot(fig, model_obs, plot_dict_obs)
+
     # update the observables that don't need to allocate more space
-    plot_dict["pos"][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
-    plot_dict["status"][] = robot_status.(allagents(model))
-    plot_dict["rot"][] = [r.θ for r in allagents(model)]
-    plot_dict["graph"][] = visibility_graph(model)
+    plot_dict[][:pos][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model[])]
+    plot_dict[][:status][] = robot_status.(allagents(model[]))
+    plot_dict[][:rot][] = [r.θ for r in allagents(model[])]
+    plot_dict[][:graph][] = visibility_graph(model[])
 
+    oldN = size(plot_dict[][:hist],1)
+    N = nagents(model[])
 
-    # TODO: increase size of the circular buffer if needed
-    for _ in 1:model[].history_size
-        for (id, buf) in enumerate(plot_dict["hist"])
-            fill!(buf[], plot_dict["pos"][][id])
-            buf[] = buf[]
+    ax_main = fig.content[1]
+
+#    model[oldN+1:N]
+
+    # if we increse the number of agents, we have to create the observables
+    # for the visibility radius and the trajectory, then add to the existing plot
+    if N > oldN
+
+        # the old agents must simply be updated
+        for id ∈ 1:oldN
+            fill!(plot_dict[][:hist][id][], plot_dict[][:pos][][3])
+            plot_dict[][:hist][id][] = plot_dict[][:hist][id][]
+
+            plot_dict[][:vis][id][1][] = model[][id].pos
+            plot_dict[][:vis][id][2][] = model[][id].vis_range
+
+            plot_dict[][:com][id][1][] = model[][id].pos
+            plot_dict[][:com][id][2][] = model[][id].com_range
         end
 
-       # for (id, r) in enumerate(allagents(model[]))
-       #     !(plot_dict["hist"][id][], plot_dict["pos"][][id])
-       #     plot_dict["hist"][id][] = plot_dict["hist"][id][]
-       # end
+        # the new agents have to have their memory allocated
+        for id ∈ oldN+1:N
+            id = 3
+            id = 4
+            push!(plot_dict[][:hist], Observable(CircularBuffer{Point2f}(model[].history_size)))
+            fill!(plot_dict[][:hist][id][], plot_dict[][:pos][][id])
+            plot_dict[][:hist][id][] = plot_dict[][:hist][id][]
+
+            push!(plot_dict[][:traj_color], Observable([RGBAf(model[].colors[id].r, model[].colors[id].g, model[].colors[id].b, (i/model[].history_size)^2) for i in 1:model[].history_size]))
+
+
+            lines!(ax_main, plot_dict[][:hist][id];
+               linewidth = 3,
+               color = plot_dict[][:traj_color][id]
+            )
+
+            push!(plot_dict[][:vis], (Observable(model[][id].pos), Observable(model[][id].vis_range)))
+            push!(plot_dict[][:com], (Observable(model[][id].pos), Observable(model[][id].com_range)))
+
+            arc!(ax_main, plot_dict[][:vis][id][1], plot_dict[][:vis][id][2], 0, 2π;
+               linestyle = :dash,
+               linewidth = 1,
+               color = model[].colors[id]
+            )
+        end
+    else # if we have less agents, we have to remove the extra plots
+#        for id ∈ N+1:oldN
+#            delete!(ax_main[id*2+1]) # delete
+#        end
     end
 
-#    rob_hist = [Observable(CircularBuffer{Point2f}(model.history_size)) for _ in 1:N]
-#    for (id, buf) in enumerate(rob_hist)
-#        fill!(buf[], rob_pos[][id])
+#    # TODO: check if the plot updates with this, it probably only has the original indexes there
+#    for (id, r) in enumerate(allagents(model))
+#        fill!(plot_dict["hist"][id][], plot_dict["pos"][][id])
+#        plot_dict["hist"][id][] = plot_dict["hist"][id][]
+#
+#        lines!(ax_main, plot_dict["hist"][id];
+#               linewidth = 3,
+#               color = traj_color[id]
+#               )
 #    end
 
-
-    # TODO: increase size of visibility and communication lists
-    for (id,r) in enumerate(allagents(model[]))
-        plot_dict["vis"][id][1][] = r.pos
-        plot_dict["vis"][id][2][] = r.vis_range
-
-        plot_dict["com"][id][1][] = r.pos
-        plot_dict["com"][id][2][] = r.com_range
-    end
+    # plot visibility range
+#    for id in allids(model)
+#        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
+#             linestyle = :dash,
+#             linewidth = 1,
+#             color = model.colors[id]
+#             )
+#    end
+#
+##    rob_hist = [Observable(CircularBuffer{Point2f}(model.history_size)) for _ in 1:N]
+##    for (id, buf) in enumerate(rob_hist)
+##        fill!(buf[], rob_pos[][id])
+##    end
+#
+#
+#    # TODO: increase size of visibility and communication lists
+#    for (id,r) in enumerate(allagents(model))
+#        plot_dict["vis"][id][1][] = r.pos
+#        plot_dict["vis"][id][2][] = r.vis_range
+#
+#        plot_dict["com"][id][1][] = r.pos
+#        plot_dict["com"][id][2][] = r.com_range
+#    end
+#
+#    for id in allids(model)
+#        arc!(ax_main, plot_dict["vis"][id][1], plot_dict["vis"][id][2], 0, 2π;
+#             linestyle = :dash,
+#             linewidth = 1,
+#             color = model.colors[id]
+#             )
+#    end
 
 #    rob_com = [(Observable(r.pos), Observable(r.com_range)) for r in allagents(model)]
+     return fig
 end
 
 
 function run_simulator!(model, agent_step!)
     fig, plot_dict, buttons, textboxes = make_figure(model; interactive=true)
+
+    # make everything used by the listeners also observable
     model = Observable(model)
+    plot_dict = Observable(plot_dict)
+
+    # TODO: Remove
+    agent_step! = agent_laplacian_step!
 
     # get starting values for the model
     seed = Observable(model[].seed)
@@ -275,8 +351,11 @@ function run_simulator!(model, agent_step!)
         println("Pressed RUN")
         @async while is_running[]       # while the running flag is true
             isopen(fig.scene) || break  # and the simulation is still open
-            animation_step!(model[], agent_step!, plot_dict)
+            animation_step!(model[], agent_step!, plot_dict[])
             sleep(model[].δt)
+
+            model[] = model[]
+            plot_dict[] = plot_dict[]
         end
     end
 
@@ -284,7 +363,9 @@ function run_simulator!(model, agent_step!)
     on(b_step.clicks) do clicks
         println("Pressed STEP")
         if !is_running[]
-            animation_step!(model[], agent_step!, plot_dict)
+            animation_step!(model[], agent_step!, plot_dict[])
+            model[] = model[]
+            plot_dict[] = plot_dict[]
         end
     end
 
@@ -312,14 +393,12 @@ function run_simulator!(model, agent_step!)
     # the reset button starts a new model with the parameters and relaunches the figure
     on(b_reset.clicks) do clicks
         println("Pressed RESET")
-        model[] = initialize_model(; seed = seed[], δt = dt[], N = nb_agents[], com_range = 10., vis_range = vis_range[], history_size = 500)
+        model[] = initialize_model(; seed=seed[], δt=dt[], N=nb_agents[], com_range=vis_range[], vis_range=vis_range[],
+                                   history_size=model[].history_size, extent=model[].space.extent, speed=1.0)
 
-        # no need to empty, it already updates well in the animation step
-        # gotta fix the model dependent sizes
-#        empty!(fig.content[1])
-#        empty!(fig.content[2])
+#        fig, plot_dict, buttons, textboxes = make_figure(model[]; interactive=true)
 
-        restart_plot(model[], plot_dict)
+       fig = restart_plot(fig, model, plot_dict)
     end
 end
 
@@ -331,12 +410,12 @@ end
 # model = initialize_model(;extent=(10.,10.))
 # agent_simple_step!(r1, model)
 
-model = initialize_model(; seed = 1, δt = 0.001, N = 10, com_range = 25., vis_range = 50., history_size = 300, extent=(100.,100.), speed=1.0)
+model = initialize_model(; seed = 1, δt = 0.001, N = 2, com_range = 25., vis_range = 50., history_size = 500, extent=(300.,300.), speed=1.0)
+
+# run_animation!(model, agent_simple_step!; n_steps=1000)
 
 run_animation!(model, agent_laplacian_step!; n_steps=2500)
 
-run_animation!(model, agent_simple_step!; n_steps=1000)
+make_animation!(model, agent_laplacian_step!; n_frames=1000, steps_per_frame=1)
 
-make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
-
-run_simulator!(model, agent_simple_step!)
+run_simulator!(model, agent_laplacian_step!)

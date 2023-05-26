@@ -5,19 +5,23 @@ include(srcdir("Robot.jl"))
 include(srcdir("Draw.jl"))
 
 
-model = initialize_model(;N=40, δt=0.001, history_size=500, com_range=25., vis_range=25.)
+model = initialize_model(;
+    seed = 1,
+    δt = 0.001,
+    N = 10,
+    com_range = 25.,
+    vis_range = 50.,
+    history_size = 300,
+    extent=(100.,100.),
+    speed=1.0
+)
 
-fig, rob_pos, rob_hist, rob_color, rob_rot = make_figure(model)
+# fig, plot_dict, buttons, textboxes = make_figure(model)
 
-frames = 1:3000
+run_animation!(model, agent_laplacian_step!; n_steps=2500)
 
-for i ∈ frames
-    animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_color, rob_rot)
-    sleep(model.δt)
-end
+#run_animation!(model, agent_simple_step!; n_steps=1000)
 
-record(fig, plotsdir("essaim.mp4"), frames; framerate = 60) do i
-    for j in 1:3  # each frame is stepped 3 times
-        animation_step!(model, agent_simple_step!, rob_pos, rob_hist, rob_color, rob_rot)
-    end
-end
+#make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
+
+run_simulator!(model, agent_simple_step!)

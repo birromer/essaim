@@ -39,8 +39,9 @@ function initialize_model(;
     properties = Dict(  # save the time step in the model
         :δt => δt,
         :history_size => history_size,
-        :colors => distinguishable_colors(N),
-        :seed => seed
+        :colors => distinguishable_colors(N, [RGB(1,1,1), RGB(0,0,0)], dropseed=true),
+        :seed => seed,
+        :speed => speed,
     )
 
     model = AgentBasedModel(Robot{D}, space;
@@ -70,7 +71,7 @@ end
 # we define how each robot behaves, at
 function agent_laplacian_step!(r1, model)
     neighbours = nearby_agents(r1, model, r1.vis_range)
-    σ = 0.2
+    σ = 1.0
 
     dpos = r1.pos
     for r2 ∈ neighbours
