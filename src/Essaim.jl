@@ -3,7 +3,6 @@ module Essaim
 using DrWatson
 @quickactivate "Essaim"
 
-include(srcdir("Robot.jl"))
 include(srcdir("Draw.jl"))
 
 function julia_main()::Cint
