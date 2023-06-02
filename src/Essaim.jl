@@ -1,3 +1,4 @@
+module Essaim
 
 using DrWatson
 @quickactivate "Essaim"
@@ -11,4 +12,6 @@ function julia_main()::Cint
     run_simulator!(model, agent_laplacian_step!)
 
     return 0 # if things finished successfully
+end
+
 end
