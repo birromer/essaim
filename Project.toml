@@ -1,5 +1,6 @@
 name = "Essaim"
 authors = ["Bernardo"]
+uuid = "283d002c-1eaf-4967-a9da-4ec02a99df0f"
 
 [deps]
 Agents = "46ada45e-f475-11e8-01d0-f70cc89e6671"
