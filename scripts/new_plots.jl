@@ -18,6 +18,14 @@ const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 
 # helper functions for plotting
 robot_status(robot::Robot) = robot.alive == true ? :darkgreen : :red
 
+# function plot_limits(model)
+#     robot_positions = [r.pos for r in allagents(model)]
+#
+#     center = reduce((x,y) -> x.+y, robot_positions) / nagents(model)
+#
+#     return (x1,x2,y1,y2)
+# end
+
 function visibility_graph(model)
     g = SimpleGraph(nagents(model))
     for (id1,r1) in enumerate(allagents(model))
@@ -72,11 +80,13 @@ function make_figure(model, agent_step!; interactive=true)
     # create a new figure
     fig = Figure(;resolution=(1000,700)); display(fig)
 
+    # compute center of the plot as the average of all robots
+
     ax_main  = Axis(
         fig[1:16,1:4],
         title="Dynamic continuous average consensus",
         aspect = DataAspect(),
-        limits = (-model.space.extent[1],model.space.extent[1], -model.space.extent[2], model.space.extent[2]),
+        limits = (-model.space.extent[1]/2,model.space.extent[1]+model.space.extent[1]/2, -model.space.extent[2]/2, model.space.extent[2]+model.space.extent[2]/2),
         xminorticksvisible = true,
         xminorticks = IntervalsBetween(5),
         yminorticksvisible = true,
@@ -112,7 +122,10 @@ function make_figure(model, agent_step!; interactive=true)
 
     # plot visibility range
     for id in allids(model)
+
+        # TODO: Remove
         println("Id vis: ", id, " at pos", plot_dict[:vis][id][1][], " and radius ", plot_dict[:vis][id][2][])
+
         arc!(ax_main, plot_dict[:vis][id][1], plot_dict[:vis][id][2], 0, 2π;
              linestyle = :dash,
              linewidth = 1,
@@ -300,63 +313,6 @@ function run_simulator!(model, agent_step!)
     end
 end
 
-function run_simulator!(model, agent_step!)
-    fig, plot_dict, interaction_dict = make_figure(model; interactive=true)
-
-    fig = Observable(fig)
-    plot_dict = Observable(plot_dict)
-    interaction_dict = Observable(interaction_dict)
-
-#    reset = Observable(false)
-
-    # we need to relaunch the listener at each reset
-    on(interaction_dict[][:reset]) do reset
-        println("Pressed RESET")
-        println("Reset value: ", reset)
-
-        model = initialize_model(;
-                                 seed = interaction_dict[][:seed][],
-                                 δt = interaction_dict[][:dt][],
-                                 N = interaction_dict[][:nb_agents][],
-                                 com_range = interaction_dict[][:vis_range][],
-                                 vis_range = interaction_dict[][:vis_range][],
-                                 history_size = model.history_size,
-                                 extent = model.space.extent,
-                                 speed = 1.0
-                                 )
-
-        # the reset button starts a new model with the parameters and relaunches the figure
-        fig[], plot_dict[], interaction_dict[] = make_figure(model; interactive=true)
-    end
-
-#    while true
-#        isopen(fig[].scene) || break  # and the simulation is still open
-#        if interaction_dict[][:reset][]
-#            # we need to relaunch the listener at each reset
-#            on(interaction_dict[][:reset]) do reset
-#                println("Pressed RESET")
-#                println("Reset value: ", reset)
-#
-#                model = initialize_model(;
-#                                         seed = interaction_dict[][:seed][],
-#                                         δt = interaction_dict[][:dt][],
-#                                         N = interaction_dict[][:nb_agents][],
-#                                         com_range = interaction_dict[][:vis_range][],
-#                                         vis_range = interaction_dict[][:vis_range][],
-#                                         history_size = model.history_size,
-#                                         extent = model.space.extent,
-#                                         speed = 1.0
-#                                         )
-#
-#                # the reset button starts a new model with the parameters and relaunches the figure
-#                fig[], plot_dict[], interaction_dict[] = make_figure(model; interactive=true)
-#            end
-#        end
-#        sleep(model.δt)
-#    end
-
-end
-
 # example usage
 #
 # r1 = Robot(1, (1.,1.), (0.1, 0.1), 0., 0.1, 5., 5., true)
@@ -365,7 +321,7 @@ end
 # model = initialize_model(;extent=(10.,10.))
 # agent_simple_step!(r1, model)
 
-model = initialize_model(; seed = 1, δt = 0.001, N = 2, com_range = 25., vis_range = 50., history_size = 500, extent=(300.,300.), speed=1.0)
+model = initialize_model(; seed = 1, δt = 0.001, N = 2, com_range = 25., vis_range = 50., history_size = 500, extent=(100.,100.), speed=1.0)
 
 run_animation!(model, agent_laplacian_step!; n_steps=2500)
 

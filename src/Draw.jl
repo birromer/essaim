@@ -284,6 +284,7 @@ function run_simulator!(model, agent_step!)
         println("Pressed RESET")
         println("Reset value: ", reset)
 
+        # the reset button starts a new model with the parameters and relaunches the figure
         model = initialize_model(;
                                  seed = interaction_dict[][:seed][],
                                  δt = interaction_dict[][:dt][],
@@ -295,8 +296,7 @@ function run_simulator!(model, agent_step!)
                                  speed = 1.0
                                  )
 
-        # the reset button starts a new model with the parameters and relaunches the figure
-        fig[], plot_dict[], interaction_dict[] = make_figure(model, agent_step!; interactive=true)
+        run_simulator!(model, agent_step!)
     end
 end
 
