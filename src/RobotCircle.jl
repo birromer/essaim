@@ -1,5 +1,5 @@
-module Dubins
-export Robot, initialize_model, agent_laplacian_step!, agent_simple_step!
+module Circle
+export RobotCircle, initialize_model, agent_laplacian_step!, agent_simple_step!
 
 using DrWatson
 @quickactivate "Essaim"
@@ -11,10 +11,12 @@ using Colors
 
 # our robots are in the dubin's car model
 # cannot subtype ContinuousAgent as it's concrete
-mutable struct Robot{D} <: AbstractAgent
+mutable struct RobotCircle{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,Float64} # pos and vel required like this for ContinuousAgent
     vel::NTuple{D,Float64} # required for using update_vel! in the model
+    c::NTuple{D,Float64} # center of the rotation
+    r::Float64 # distance to the center of rotation
     θ::Float64
     θ̇::Float64
     vis_range::Float64  # how far can it see?
@@ -47,7 +49,7 @@ function initialize_model(;
         :speed => speed,
     )
 
-    model = AgentBasedModel(Robot{D}, space;
+    model = AgentBasedModel(RobotCircle{D}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties
@@ -57,6 +59,15 @@ function initialize_model(;
     for n ∈ 1:N
         # get random position and heading
         pos = Tuple(rand(model.rng, 2)) .* (extent./2) .+ (extent./4)
+
+        c_angle = rand(model.rng) * 2π
+
+        c_dist = rand(model.rng) * vis_range # if you can see the robot, you can see also its radius
+        c_pos = pos .+ c_dist .* (
+                        cos(c_angle),
+                        sin(c_angle)
+        )
+
         heading = rand(model.rng) * 2π
         vel = speed.* (
             pos[1]*cos(heading) - pos[2]*sin(heading),
@@ -64,7 +75,7 @@ function initialize_model(;
         )
 
         # initialize the agents with argument values and no heading change
-        agent = Robot{D}(n, pos, vel, heading, 0.0, vis_range, com_range, true)
+        agent = RobotCircle{D}(n, pos, vel, c_pos, c_dist, heading, 0.0, vis_range, com_range, true)
         add_agent!(agent, model)
     end
 

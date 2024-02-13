@@ -1,7 +1,10 @@
+module Draw
+export run_animation!, make_animation!, run_simulator!
+
 using DrWatson
 @quickactivate "Essaim"
 
-include(srcdir("Robot.jl"))
+#include(srcdir("Robot.jl"))
 
 using Agents
 using GLMakie
@@ -16,7 +19,7 @@ using Makie.Colors
 const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
 
 # helper functions for plotting
-robot_status(robot::Robot) = robot.alive == true ? :darkgreen : :red
+robot_status(robot) = robot.alive == true ? :darkgreen : :red
 
 function visibility_graph(model)
     g = SimpleGraph(nagents(model))
@@ -311,3 +314,5 @@ end
 #make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
 
 #run_simulator!(model, agent_simple_step!)
+
+end # module
