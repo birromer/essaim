@@ -273,7 +273,7 @@ function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
     end
 end
 
-function run_simulator!(model, agent_step!)
+function run_simulator!(model, agent_step!, initialize_model)
     fig, plot_dict, interaction_dict = make_figure(model, agent_step!; interactive=true)
 
     fig = Observable(fig)
@@ -299,7 +299,7 @@ function run_simulator!(model, agent_step!)
                                  speed = 1.0
                                  )
 
-        run_simulator!(model, agent_step!)
+        run_simulator!(model, agent_step!, initialize_model)
     end
 end
 

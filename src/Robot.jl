@@ -1,5 +1,5 @@
-module RobotOntic
-export Robot, initialize_model, agent_laplacian_step!, agent_simple_step!
+module Robot
+export RobotOntic, initialize_model, agent_laplacian_step!, agent_simple_step!
 
 using DrWatson
 @quickactivate "Essaim"
@@ -11,7 +11,7 @@ using Colors
 
 # our robots are in the dubin's car model
 # cannot subtype ContinuousAgent as it's concrete
-mutable struct Robot{D} <: AbstractAgent
+mutable struct RobotOntic{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,Float64} # pos and vel required like this for ContinuousAgent
     vel::NTuple{D,Float64} # required for using update_vel! in the model
@@ -47,7 +47,7 @@ function initialize_model(;
         :speed => speed,
     )
 
-    model = AgentBasedModel(Robot{D}, space;
+    model = AgentBasedModel(RobotOntic{D}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties
@@ -64,7 +64,7 @@ function initialize_model(;
         )
 
         # initialize the agents with argument values and no heading change
-        agent = Robot{D}(n, pos, vel, heading, 0.0, vis_range, com_range, true)
+        agent = RobotOntic{D}(n, pos, vel, heading, 0.0, vis_range, com_range, true)
         add_agent!(agent, model)
     end
 
