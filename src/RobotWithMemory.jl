@@ -1,5 +1,5 @@
-module Circle
-export RobotCircle, initialize_model, agent_laplacian_step!, agent_simple_step!
+module RobotWithMemory 
+export RobotWithMemory, initialize_model, agent_laplacian_step!, agent_simple_step!
 
 using DrWatson
 @quickactivate "Essaim"
@@ -9,31 +9,43 @@ using DataStructures: CircularBuffer
 using Random
 using Colors
 
-# our robots are in the dubin's car model
-# cannot subtype ContinuousAgent as it's concrete
-mutable struct RobotCircle{D} <: AbstractAgent
-    id::Int
+mutable struct OnticStatePhysical{D}
     pos::NTuple{D,Float64} # pos and vel required like this for ContinuousAgent
     vel::NTuple{D,Float64} # required for using update_vel! in the model
-    c::NTuple{D,Float64} # center of the rotation
-    r::Float64 # distance to the center of rotation
     θ::Float64
-    θ̇::Float64
-    vis_range::Float64  # how far can it see?
-    com_range::Float64  # how far can it communicate?
-    alive::Bool  # is it alive?
+    dθ::Float64
+end
+
+mutable struct OnticState{D}
+    x::NTuple{D,Float64}
+    dx::NTuple{D,Float64}
+end
+
+mutable struct EpistemicState{D}
+    μ::NTuple{D,Float64}
+    ̇dμ::NTuple{D,Float64}
+end
+
+mutable struct RobotWithMemory{D, OnticState, EpistemicState} <: AbstractAgent
+    id::Int
+    onc::OnticState{D}      # The ontic and epistemic  states are provided
+    epi::EpistemicState{D}  # according to the task implemented
+
+    vis_range::Float64  # Perception range
+    com_range::Float64  # Communication range
+    alive::Bool  # Is it alive?
 end
 
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(;
-                          N = 5,                 # number of agents
-                          extent = (100.0,100.0),  # size of the world
-                          speed = 1.0,           # their initial velocity
-                          vis_range = 5.0,       # visibility range
-                          com_range = 5.0,       # communication range
-                          δt = 0.01,             # time step of the model
+                          N = 5,                  # number of agents
+                          extent = (100.0,100.0), # size of the world
+                          speed = 1.0,            # their initial velocity
+                          vis_range = 5.0,        # visibility range
+                          com_range = 5.0,        # communication range
+                          δt = 0.01,              # time step of the model
                           history_size = 300,     # amount of saved past states
-                          seed = 42              # random seed
+                          seed = 42               # random seed
 )
     # initialize model
     space = ContinuousSpace(extent)  # 2D euclidean space
@@ -49,7 +61,7 @@ function initialize_model(;
         :speed => speed,
     )
 
-    model = AgentBasedModel(RobotCircle{D}, space;
+    model = AgentBasedModel(Robot{D}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties
@@ -59,15 +71,6 @@ function initialize_model(;
     for n ∈ 1:N
         # get random position and heading
         pos = Tuple(rand(model.rng, 2)) .* (extent./2) .+ (extent./4)
-
-        c_angle = rand(model.rng) * 2π
-
-        c_dist = rand(model.rng) * vis_range # if you can see the robot, you can see also its radius
-        c_pos = pos .+ c_dist .* (
-                        cos(c_angle),
-                        sin(c_angle)
-        )
-
         heading = rand(model.rng) * 2π
         vel = speed.* (
             pos[1]*cos(heading) - pos[2]*sin(heading),
@@ -75,7 +78,7 @@ function initialize_model(;
         )
 
         # initialize the agents with argument values and no heading change
-        agent = RobotCircle{D}(n, pos, vel, c_pos, c_dist, heading, 0.0, vis_range, com_range, true)
+        agent = Robot{D}(n, pos, vel, heading, 0.0, vis_range, com_range, true)
         add_agent!(agent, model)
     end
 
@@ -92,7 +95,7 @@ function agent_laplacian_step!(r1, model)
         dpos = dpos .- σ .* (r1.pos .- r2.pos)
     end
 
-    r1.θ̇ = 0
+    r1.dθ = 0
     r1.vel = dpos
 
     r1.pos = r1.pos .+ r1.vel .* model.δt
@@ -109,7 +112,7 @@ function agent_simple_step!(robot, model)
     neighbor_ids = nearby_ids(robot, model, robot.vis_range)
 
     robot.pos = robot.pos .+ robot.vel .* model.δt
-    robot.θ += robot.θ̇ * model.δt
+    robot.θ += robot.dθ * model.δt
 
     robot.vel = (
         robot.pos[1]*cos(robot.θ) - robot.pos[2]*sin(robot.θ),
@@ -118,12 +121,12 @@ function agent_simple_step!(robot, model)
 
     for id in neighbor_ids
         if euclidean_distance(robot.pos, model[id].pos, model) > robot.com_range
-            robot.θ̇ += 0.01
+            robot.dθ += 0.01
             return
         end
     end
 
-    robot.θ̇ -= 0.005
+    robot.dθ -= 0.005
 
     return
 end

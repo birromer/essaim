@@ -1,4 +1,4 @@
-module Dubins
+module RobotOntic
 export Robot, initialize_model, agent_laplacian_step!, agent_simple_step!
 
 using DrWatson
@@ -16,7 +16,7 @@ mutable struct Robot{D} <: AbstractAgent
     pos::NTuple{D,Float64} # pos and vel required like this for ContinuousAgent
     vel::NTuple{D,Float64} # required for using update_vel! in the model
     θ::Float64
-    θ̇::Float64
+    dθ::Float64
     vis_range::Float64  # how far can it see?
     com_range::Float64  # how far can it communicate?
     alive::Bool  # is it alive?
@@ -24,14 +24,14 @@ end
 
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(;
-                          N = 5,                 # number of agents
-                          extent = (100.0,100.0),  # size of the world
-                          speed = 1.0,           # their initial velocity
-                          vis_range = 5.0,       # visibility range
-                          com_range = 5.0,       # communication range
-                          δt = 0.01,             # time step of the model
+                          N = 5,                  # number of agents
+                          extent = (100.0,100.0), # size of the world
+                          speed = 1.0,            # their initial velocity
+                          vis_range = 5.0,        # visibility range
+                          com_range = 5.0,        # communication range
+                          δt = 0.01,              # time step of the model
                           history_size = 300,     # amount of saved past states
-                          seed = 42              # random seed
+                          seed = 42               # random seed
 )
     # initialize model
     space = ContinuousSpace(extent)  # 2D euclidean space
@@ -81,7 +81,7 @@ function agent_laplacian_step!(r1, model)
         dpos = dpos .- σ .* (r1.pos .- r2.pos)
     end
 
-    r1.θ̇ = 0
+    r1.dθ = 0
     r1.vel = dpos
 
     r1.pos = r1.pos .+ r1.vel .* model.δt
@@ -98,7 +98,7 @@ function agent_simple_step!(robot, model)
     neighbor_ids = nearby_ids(robot, model, robot.vis_range)
 
     robot.pos = robot.pos .+ robot.vel .* model.δt
-    robot.θ += robot.θ̇ * model.δt
+    robot.θ += robot.dθ * model.δt
 
     robot.vel = (
         robot.pos[1]*cos(robot.θ) - robot.pos[2]*sin(robot.θ),
@@ -107,12 +107,12 @@ function agent_simple_step!(robot, model)
 
     for id in neighbor_ids
         if euclidean_distance(robot.pos, model[id].pos, model) > robot.com_range
-            robot.θ̇ += 0.01
+            robot.dθ += 0.01
             return
         end
     end
 
-    robot.θ̇ -= 0.005
+    robot.dθ -= 0.005
 
     return
 end
