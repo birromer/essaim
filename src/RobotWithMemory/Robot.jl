@@ -1,5 +1,5 @@
 module RobotWithMemory 
-export RobotWithMemory, initialize_model, agent_laplacian_step!, agent_simple_step!
+export Robot, initialize_model, agent_laplacian_step!, agent_simple_step!
 
 using DrWatson
 @quickactivate "Essaim"
@@ -26,7 +26,7 @@ mutable struct EpistemicState{D}
     ̇dμ::NTuple{D,Float64}
 end
 
-mutable struct RobotWithMemory{D, OnticState, EpistemicState} <: AbstractAgent
+mutable struct Robot{D, OnticState, EpistemicState} <: AbstractAgent
     id::Int
     onc::OnticState{D}      # The ontic and epistemic  states are provided
     epi::EpistemicState{D}  # according to the task implemented
