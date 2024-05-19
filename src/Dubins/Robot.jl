@@ -24,13 +24,13 @@ end
 
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(;
-                          N = 5,                  # number of agents
+                          N = 15,                  # number of agents
                           extent = (100.0,100.0), # size of the world
                           speed = 1.0,            # their initial velocity
-                          vis_range = 5.0,        # visibility range
-                          com_range = 5.0,        # communication range
-                          δt = 0.01,              # time step of the model
-                          history_size = 300,     # amount of saved past states
+                          vis_range = 25.0,        # visibility range
+                          com_range = 25.0,        # communication range
+                          δt = 0.001,              # time step of the model
+                          history_size = 500,     # amount of saved past states
                           seed = 42               # random seed
 )
     # initialize model
