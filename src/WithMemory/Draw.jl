@@ -4,8 +4,6 @@ export run_animation!, make_animation!, run_simulator!
 using DrWatson
 @quickactivate "Essaim"
 
-#include(srcdir("Robot.jl"))
-
 using Agents
 using GLMakie
 using GraphMakie
