@@ -1,8 +1,8 @@
 using DrWatson
 @quickactivate "Essaim"
 
-include(srcdir("Dubins/Robot.jl"))
-include(srcdir("Dubins/Draw.jl"))
+include(srcdir("dubins", "robot.jl"))
+include(srcdir("dubins", "draw.jl"))
 
 model = Robot.initialize_model(; seed = 1, δt = 0.001, N = 15, com_range = 25., vis_range = 25., history_size = 500, extent=(100.,100.), speed=1.0)
 

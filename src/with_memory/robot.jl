@@ -4,56 +4,34 @@ export Robot, initialize_model, agent_laplacian_step!, agent_simple_step!
 using DrWatson
 @quickactivate "Essaim"
 
+include(srcdir("utils.jl"))
+
 using Agents
 using DataStructures: CircularBuffer
 using Random
 using Colors
 
-# mutable struct OnticStateDubins2D
-#     pos::NTuple{2,Float64}
-#     vel::NTuple{2,Float64}
-#     θ::Float64
-#     dθ::Float64
-# end
-# 
-# # For a 2d dubins, D=3 (pos[2] + rot[1], vel + pre)
-# # For a 3d dubins, D=6 (pos[3] + rot[3], vel + pre)
-# mutable struct OnticState{D}
-#     x::NTuple{D,Float64}
-#     dx::NTuple{D,Float64}
-# end
-# 
-# mutable struct EpistemicState{D}
-#     μ::NTuple{D,Float64}
-#     ̇dμ::NTuple{D,Float64}
-# end
-# mutable struct Robot{D, OnticState, EpistemicState} <: AbstractAgent
-#     id::Int
-#     onc::OnticState{D}      # The ontic and epistemic  states are provided
-#     epi::EpistemicState{D}  # according to the task implemented
-# 
-#     vis_range::Float64  # Perception range
-#     com_range::Float64  # Communication range
-#     alive::Bool  # Is it alive?
-# end
-
-#TODO: What is there inside of AbstractAgent?
-mutable struct Robot{O,E} <: AbstractAgent
+mutable struct Robot{D,O,E} <: AbstractAgent
     id::Int
 
-    x::NTuple{O,Float64}   # ontic state
-    dx::NTuple{O,Float64}  # d/dt ontic state
+    # pos and vel are needed like this for ContinuousSpace struct
+    pos::SVector{D,Float64}  # position part of ontic state
+    vel::SVector{D,Float64}  # velocity ...
 
-    μ::NTuple{E,Float64}   # epistemic state
-    ̇dμ::NTuple{E,Float64}  # d/dt epistemic state
+    x::SVector{O,Float64}   # ontic state
+    dx::SVector{O,Float64}  # d/dt ontic state
 
-    vis_range::Float64  # Perception range
-    com_range::Float64  # Communication range
-    alive::Bool  # Is it alive?
+    μ::SVector{O,Float64}   # epistemic state
+    dμ::SVector{O,Float64}  # d/dt epistemic state
+
+    vis_range::Float64  # perception range
+    com_range::Float64  # communication range
+    alive::Bool  # is it alive?
 end
 
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(;
+                          N = 10,                  # number of agents
                           dimensions = (2,             # dim ontic position
                                         1,             # dim ontic rotation
                                         0,             # dim other ontic
@@ -65,7 +43,6 @@ function initialize_model(;
 #                                       (-3, 3),       #  ontic state variable
                           copy_ontic = 2,          # initialize first n values
                                                    #  of epistemic from ontic
-                          N = 10,                  # number of agents
                           extent = (100.0,100.0),  # size of the world
                           speed = 1.0,             # their initial speed
                           vis_range = 100.0,       # visibility range
@@ -80,14 +57,17 @@ function initialize_model(;
     scheduler = Schedulers.fastest      # they are executed semi-synchronously,
                                         #  in order of their indexing
     # get dimensions
-    D_onc_pos = dimensions[1]    # position dimensions
-    D_onc_rot = dimensions[2]    # rotation dimensions
-    D_onc_other = dimensions[3]  # other dimensions of ontic state
-    D_onc = D_onc_pos + D_onc_rot + D_onc_other  # total dimensions ontic state
-    D_epi = dimensions[4]       # total dimensions epistemic state
+    D = dimensions[1]            # position dimensions
+    @assert D == length(extent)  # make sure there are enough coordinates
+    @assert 1 <= D && D <= 3     # it only makes sense to have robots in 1d, 2d or 3d
 
-    @assert D_onc == length(ranges)  # make sure all variables have ranges 
-    @assert D_onc_pos == length(extent)  # make sure there are enough coordinates
+    O_rot = dimensions[2]    # rotation dimensions
+    O_other = dimensions[3]  # other dimensions of ontic state
+    O = D + O_rot + O_other  # total dimensions ontic state
+    @assert O == length(range_dims) # make sure all ontic state variables have range
+
+    E = dimensions[4]        # total dimensions epistemic state
+
 
     properties = Dict(  # save the time step in the model
         :δt => δt,
@@ -97,7 +77,7 @@ function initialize_model(;
         :speed => speed,
        )
 
-    model = AgentBasedModel(Robot{D_onc, D_epi}, space;
+    model = AgentBasedModel(Robot{D, O-D, E}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties
@@ -106,19 +86,20 @@ function initialize_model(;
     # now we add the agents
     for n ∈ 1:N
         #initialize ontic state
-#        x = @SVector [rand(model.rng) * (range[i][2] - range[i][1]) + range[i][1] for i = 1:D_onc]
+        pos = SVector{D}([rand(model.rng) * (range[i][2] - range[i][1]) + range[i][1] for i = 1:D])
 
-        x = ntuple(i -> rand(model.rng) * (range[i][2] - range[i][1]) + range[i][1], D_onc)
-        dx = ntuple(i->0, D_onc)
+        rot = (D == 1 ? 1 : # if D == 1 there is no rotation
+               (D == 2 ? rot2D(x[1]) :
+                rot3D(x[1], x[2], x[3])))
+        vel = speed * rot * pos
 
-        vel = speed.* (
-                       x[1]*cos(x[D_onc_pos+1]) - x[2]*sin(D_onc_pos+1),
-                       x[1]*sin(x[D_onc_pos+1]) + x[2]*cos(D_onc_pos+1)
-                      )
+        # everything ontic that is not the coordinates or their derivative
+        x = SVector{O-D}([rand(model.rng) * (range[i][2] - range[i][1]) + range[i][1] for i = D+1:O])
+        dx = SVector{O-D}([0 for i = D+1:O])
 
         # initialize epistemic state to 0 or copy from ontic
-        μ = ntuple(i -> i ≤ copy_ontic ? x[i] : 0, D_epi)
-        dμ = ntuple(i -> i ≤ copy_ontic ? dx[i] : 0, D_epi)
+        μ = SVector{E}([(i ≤ copy_ontic ? x[i] : 0) for i = 1:E])
+        dμ = SVector{E}([(i ≤ copy_ontic ? x[i] : 0) for i = 1:E])
 
         # initialize the agents with argument values and no heading change
         agent = Robot{D}(n, x, dx, μ, dμ, vis_range, com_range, true)
