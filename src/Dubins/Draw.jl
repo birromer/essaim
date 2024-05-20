@@ -1,6 +1,3 @@
-module Draw
-export run_animation!, make_animation!, run_simulator!
-
 using DrWatson
 @quickactivate "Essaim"
 
@@ -11,7 +8,7 @@ using Graphs
 using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
-using Makie.Colors
+using Colors
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
 const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
@@ -300,17 +297,3 @@ function run_simulator!(model, agent_step!, initialize_model)
         run_simulator!(model, agent_step!, initialize_model)
     end
 end
-
-# example usage
-
-#model = initialize_model(; seed = 1, δt = 0.001, N = 10, com_range = 25., vis_range = 50., history_size = 300, extent=(100.,100.), speed=1.0)
-
-#run_animation!(model, agent_laplacian_step!; n_steps=2500)
-
-#run_animation!(model, agent_simple_step!; n_steps=1000)
-
-#make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
-
-#run_simulator!(model, agent_simple_step!)
-
-end # module

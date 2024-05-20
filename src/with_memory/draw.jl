@@ -1,6 +1,3 @@
-module Draw
-export run_animation!, make_animation!, run_simulator!
-
 using DrWatson
 @quickactivate "Essaim"
 
@@ -47,7 +44,7 @@ function make_figure(model, agent_step!; interactive=true)
 
     # make the properties that change according to the robot observables
     rob_status = Observable(robot_status.(allagents(model)))  # the countour color
-    rob_rot = Observable([r.θ for r in allagents(model)])
+    rob_rot = Observable([r.x[1] for r in allagents(model)])
 
     # make the togglable properties of the plot observables too
     rob_vis = [(Observable(r.pos), Observable(r.vis_range)) for r in allagents(model)]
@@ -227,7 +224,7 @@ function animation_step!(model, agent_step!, plot_dict)
 
     # update the markers orientation and color
     plot_dict[:status][] = robot_status.(allagents(model))
-    plot_dict[:rot][] = [r.θ for r in allagents(model)]
+    plot_dict[:rot][] = [r.x[1] for r in allagents(model)]
 
     # update the visibility and communication ranges
     for (id,r) in enumerate(allagents(model))
@@ -287,30 +284,19 @@ function run_simulator!(model, agent_step!, initialize_model)
 
         # the reset button starts a new model with the parameters and relaunches the figure
         model = initialize_model(;
-                                 seed = interaction_dict[][:seed][],
-                                 δt = interaction_dict[][:dt][],
-                                 N = interaction_dict[][:nb_agents][],
+                                 seed      = interaction_dict[][:seed][],
+                                 δt        = interaction_dict[][:dt][],
+                                 N         = interaction_dict[][:nb_agents][],
                                  com_range = interaction_dict[][:vis_range][],
                                  vis_range = interaction_dict[][:vis_range][],
                                  history_size = model.history_size,
-                                 extent = model.space.extent,
-                                 speed = 1.0
+                                 extent       = model.space.extent,
+                                 range_dims   = model.range_dims,
+                                 dimensions   = model.dimensions,
+                                 speed        = mode.speed,
+                                 copy_ontic   = model.copy_ontic
                                  )
 
         run_simulator!(model, agent_step!, initialize_model)
     end
 end
-
-# example usage
-
-#model = initialize_model(; seed = 1, δt = 0.001, N = 10, com_range = 25., vis_range = 50., history_size = 300, extent=(100.,100.), speed=1.0)
-
-#run_animation!(model, agent_laplacian_step!; n_steps=2500)
-
-#run_animation!(model, agent_simple_step!; n_steps=1000)
-
-#make_animation!(model, agent_simple_step!; n_frames=1000, steps_per_frame=1)
-
-#run_simulator!(model, agent_simple_step!)
-
-end # module
