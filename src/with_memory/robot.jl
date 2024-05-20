@@ -1,5 +1,5 @@
 using DrWatson
-@quickactivate "essaim_v2"
+@quickactivate "Essaim"
 
 # applies the laplacian from the task context
 function agent_step!(r_i, model)

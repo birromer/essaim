@@ -1,5 +1,5 @@
 using DrWatson
-@quickactivate "essaim_v2"
+@quickactivate "Essaim"
 
 include(srcdir("utils.jl"))
 
