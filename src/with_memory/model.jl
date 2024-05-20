@@ -1,5 +1,5 @@
 using DrWatson
-@quickactivate "Essaim"
+@quickactivate "essaim_v2"
 
 include(srcdir("utils.jl"))
 
@@ -12,22 +12,14 @@ mutable struct Robot{D,O,E} <: AbstractAgent
     id::Int
 
     # pos and vel are needed like this for ContinuousSpace struct
-#    pos::SVector{D,Float64}  # position part of ontic state
-#    vel::SVector{D,Float64}  # velocity ...
-#
-#    x::SVector{O,Float64}   # ontic state
-#    dx::SVector{O,Float64}  # d/dt ontic state
-#
-#    μ::SVector{O,Float64}   # epistemic state
-#    dμ::SVector{O,Float64}  # d/dt epistemic state
-    pos::NTuple{D,Float64}  # position part of ontic state
-    vel::NTuple{D,Float64}  # velocity ...
+    pos::SVector{D,Float64}  # position part of ontic state
+    vel::SVector{D,Float64}  # velocity ...
 
-    x::NTuple{O,Float64}   # ontic state
-    dx::NTuple{O,Float64}  # d/dt ontic state
+    x::MVector{O,Float64}   # ontic state
+    dx::MVector{O,Float64}  # d/dt ontic state
 
-    μ::NTuple{E,Float64}   # epistemic state
-    dμ::NTuple{E,Float64}  # d/dt epistemic state
+    μ::MVector{E,Float64}   # epistemic state
+    dμ::MVector{E,Float64}  # d/dt epistemic state
 
     vis_range::Float64  # perception range
     com_range::Float64  # communication range
@@ -35,7 +27,7 @@ mutable struct Robot{D,O,E} <: AbstractAgent
 end
 
 # here we initialize the model with its parameters and populate with robots
-function initialize_model(;
+function initialize_model(agent_step!;
                           N = 10,                  # number of agents
                           dimensions = (2,             # dim ontic position
                                         1,             # dim ontic rotation
@@ -75,6 +67,10 @@ function initialize_model(;
 
 
     properties = Dict(  # save the time step in the model
+        :dimensions => dimensions,
+        :range_dims => range_dims,
+        :copy_ontic => copy_ontic,
+        :step_function! => agent_step!,
         :δt => δt,
         :history_size => history_size,
         :colors => distinguishable_colors(N, [RGB(1,1,1), RGB(0,0,0)], dropseed=true),
@@ -82,43 +78,37 @@ function initialize_model(;
         :speed => speed,
        )
 
-    model = AgentBasedModel(Robot{D, O-D, E}, space;
+    # WARN: StandardABM works in discrete time, use EventQueueABM for continuous
+    model = StandardABM(Robot{D, O-D, E}, space;
                 rng = rng,
                 scheduler = scheduler,
-                properties = properties
+                properties = properties,
+                agent_step! = agent_step!,
+                container = Vector,  #WARN: Using vector because no agents are 
+                                     # expected to be removed, change to Dict
+                                     # otherwise
+                agents_first = false
                )
 
     # now we add the agents
     for n ∈ 1:N
         #initialize ontic state
-        pos_v = SVector{D}([rand(model.rng) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ 1:D])
-#
-#        rot = (D == 1 ? 1 : # if D == 1 there is no rotation
-#               (D == 2 ? rot2D(x[1]) :
-#                rot3D(x[1], x[2], x[3])))
-#        vel = speed * rot * pos
-#
-#        # everything ontic that is not the coordinates or their derivative
-#        x = SVector{O-D}([rand(model.rng) * (range[i][2] - range[i][1]) + range[i][1] for i ∈ D+1:O])
-#        dx = SVector{O-D}([0 for i ∈ D+1:O])
-#
-#        # initialize epistemic state to 0 or copy from ontic
-#        μ = SVector{E}([(i ≤ copy_ontic ? x[i] : 0) for i ∈ 1:E])
-#        dμ = SVector{E}([(i ≤ copy_ontic ? x[i] : 0) for i ∈ 1:E])
-        pos = ntuple(i -> rand(model.rng) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1], D)
-        x   = ntuple(i->rand(model.rng) * (range_dims[D+i][2] - range_dims[D+i][1]) + range_dims[D+i][1], O-D)
-        dx  = ntuple(i -> O, O-D)
+        pos = SVector{D}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ 1:D])
 
+        # everything ontic that is not the coordinates or their derivative
+        x = MVector{O-D}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ D+1:O])
+        dx = MVector{O-D}([0 for i ∈ D+1:O])
+
+        # compute velocity from rotation
         rot = (D == 1 ? 1 : # if D == 1 there is no rotation
                (D == 2 ? rot2D(x[1]) :
                 rot3D(x[1], x[2], x[3])))
-        vel_v = speed * rot * pos_v
-
-        vel = ntuple(i -> vel_v[i], D)
+        vel = speed * rot * pos
 
         # initialize epistemic state to 0 or copy from ontic
-        μ  = ntuple( i -> i ≤ copy_ontic && i ≤ D ? pos[i] : (i ≤ copy_ontic && i > D ? x[i-D] : 0), E)
-        dμ = ntuple( i -> i ≤ copy_ontic && i ≤ D ? vel[i] : (i ≤ copy_ontic && i > D ? dx[i-D] : 0), E)
+        # get the first D values from pos and vel, the rest from x and dx
+        μ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? pos[i] : (i ≤ copy_ontic && i > D ? x[i-D] : 0) for i ∈ 1:E])
+        dμ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? vel[i] : (i ≤ copy_ontic && i > D ? dx[i-D] : 0) for i ∈ 1:E])
 
         # initialize the agents with argument values and no heading change
         agent = Robot{D,O-D,E}(n, pos, vel, x, dx, μ, dμ, vis_range, com_range, true)

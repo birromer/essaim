@@ -1,17 +1,17 @@
 using DrWatson
-@quickactivate "Essaim"
+@quickactivate "essaim_v2"
 
 using Agents
 using GLMakie
 using GraphMakie
 using Graphs
-using InteractiveDynamics
+#using InteractiveDynamics
 using DataStructures: CircularBuffer
 using Random
-using Makie.Colors
 
 # base robot, center (0,0), facing east (0rad), with length 1 and base 0.5
-const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
+# const robot_poly = Polygon(Point2f[(0.5, 0.), (-0.5, 0.25), (-0.5,-0.25), (0.5, 0.)])
+const robot_poly = '→'
 
 # helper functions for plotting
 robot_status(robot) = robot.alive == true ? :darkgreen : :red
@@ -30,7 +30,7 @@ function visibility_graph(model)
 end
 
 # initialize figure for the animation
-function make_figure(model, agent_step!; interactive=true)
+function make_figure(model; interactive=true)
     N = nagents(model)
 
     # first we generate the markers for the current state of the robots
@@ -74,7 +74,7 @@ function make_figure(model, agent_step!; interactive=true)
         fig[1:16,1:4],
         title="Dynamic continuous average consensus",
         aspect = DataAspect(),
-        limits = (-model.space.extent[1],model.space.extent[1], -model.space.extent[2], model.space.extent[2]),
+        limits = (-abmspace(model).extent[1],abmspace(model).extent[1], -abmspace(model).extent[2], abmspace(model).extent[2]),
         xminorticksvisible = true,
         xminorticks = IntervalsBetween(5),
         yminorticksvisible = true,
@@ -160,7 +160,7 @@ function make_figure(model, agent_step!; interactive=true)
             println("Pressed RUN")
             @async while is_running[]       # while the running flag is true
                 isopen(fig.scene) || break  # and the simulation is still open
-                animation_step!(model, agent_step!, plot_dict)
+                animation_step!(model, plot_dict)
                 sleep(model.δt)
             end
         end
@@ -169,7 +169,7 @@ function make_figure(model, agent_step!; interactive=true)
         on(b_step.clicks) do clicks
             println("Pressed STEP")
             if !is_running[]
-                animation_step!(model, agent_step!, plot_dict)
+                animation_step!(model, plot_dict)
             end
         end
 
@@ -208,10 +208,9 @@ end
 
 # this function updates the data in the model using the robot step then updates
 # the observables (positions, trajectory and markers) related to the plot
-#function animation_step!(model, agent_step!, rob_pos, rob_hist, rob_status, rob_rot, vis_graph)
-function animation_step!(model, agent_step!, plot_dict)
+function animation_step!(model, plot_dict)
     # update robot positions
-    step!(model, agent_step!)
+    step!(model)
 
     # update positions
     plot_dict[:pos][] = [Point2f(r.pos[1], r.pos[2]) for r in allagents(model)]
@@ -244,32 +243,32 @@ function animation_step!(model, agent_step!, plot_dict)
     return
 end
 
-function run_animation!(model, agent_step!; n_steps)
-    fig, plot_dict, _ = make_figure(model, agent_step!; interactive=false)
+function run_animation!(model; n_steps)
+    fig, plot_dict, _ = make_figure(model; interactive=false)
 
     for _ ∈ 1:n_steps
         isopen(fig.scene) || break  # and the simulation is still open
-        animation_step!(model, agent_step!, plot_dict)
+        animation_step!(model, plot_dict)
         sleep(model.δt)
     end
 end
 
-function make_animation!(model, agent_step!; n_frames, steps_per_frame=3)
+function make_animation!(model; n_frames, steps_per_frame=3)
     frames = 1:n_frames
 
-    fig, plot_dict, _ = make_figure(model, agent_step!; interactive=false)
+    fig, plot_dict, _ = make_figure(model; interactive=false)
 
     filename = string("essaim_A", nagents(model), "_T", model.δt, "_V", model[1].vis_range, "_S", model.seed, "__f", n_frames, "__sf", steps_per_frame, ".mp4")
 
     record(fig, plotsdir(filename), frames; framerate = 60) do i
         for j in 1:steps_per_frame  # each frame is stepped n times
-            animation_step!(model, agent_step!, plot_dict)
+            animation_step!(model, plot_dict)
         end
     end
 end
 
-function run_simulator!(model, agent_step!, initialize_model)
-    fig, plot_dict, interaction_dict = make_figure(model, agent_step!; interactive=true)
+function run_simulator!(model, initialize_model)
+    fig, plot_dict, interaction_dict = make_figure(model; interactive=true)
 
     fig = Observable(fig)
     plot_dict = Observable(plot_dict)
@@ -282,21 +281,23 @@ function run_simulator!(model, agent_step!, initialize_model)
         println("Pressed RESET")
         println("Reset value: ", reset)
 
+        print(abmproperties(model))
+
         # the reset button starts a new model with the parameters and relaunches the figure
-        model = initialize_model(;
+        model = initialize_model(model.step_function!;
                                  seed      = interaction_dict[][:seed][],
                                  δt        = interaction_dict[][:dt][],
                                  N         = interaction_dict[][:nb_agents][],
                                  com_range = interaction_dict[][:vis_range][],
                                  vis_range = interaction_dict[][:vis_range][],
+                                 extent       = abmspace(model).extent,
                                  history_size = model.history_size,
-                                 extent       = model.space.extent,
                                  range_dims   = model.range_dims,
                                  dimensions   = model.dimensions,
-                                 speed        = mode.speed,
+                                 speed        = model.speed,
                                  copy_ontic   = model.copy_ontic
                                  )
 
-        run_simulator!(model, agent_step!, initialize_model)
+        run_simulator!(model, initialize_model)
     end
 end

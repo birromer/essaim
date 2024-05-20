@@ -1,21 +1,20 @@
 using DrWatson
-@quickactivate "Essaim"
+@quickactivate "essaim_v2"
 
-function agent_step!(r_i, model)
+function agent_laplacian_step!(r_i, model)
     neighbours = nearby_agents(r_i, model, r_i.vis_range)
 
     σ = 1.0
     dpos = r_i.pos
 
     for r_j ∈ neighbours
-        dpos = dpos .- σ .* (r_i.pos .- r_j.pos)
+        dpos = dpos - σ * (r_i.pos - r_j.pos)
     end
 
-    #WARN: This doesnt work, as x is a tuple.
-    r_i.x[1] = 0
+    r_i.dx[1] = 0
     r_i.vel = dpos
 
-    r_i.pos = r_i.pos .+ r_i.vel .* model.δt
+    r_i.pos = r_i.pos + r_i.vel * model.δt
     r_i.x[1] = atan(r_i.vel[2], r_i.vel[1])
 end
 
