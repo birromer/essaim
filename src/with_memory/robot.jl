@@ -86,7 +86,7 @@ function epistemic_evolution(μ_i, y_i, p_i, c_i)
 
     σ = 0.1
 
-    for μ_j, dμ_j ∈ c_i
+    for (μ_j, dμ_j) ∈ c_i
         diff = diff - σ * (μ_i - μ_j)
     end
 

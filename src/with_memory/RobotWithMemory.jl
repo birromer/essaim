@@ -5,15 +5,18 @@ export Robot,
        make_animation!,
        run_simulator!,
        agent_laplacian_step!,
+       agent_flock_step!,
        agent_test_step!
 
 include("model.jl")
 include("robot.jl")
+#TODO: Implement other dynamics for robot.
 include("draw.jl")  # Only for 2D visualization
+#TODO: Fix communication graph display.
 
 # example usage
 
-#model = initialize_model(agent_laplacian_step!)
+#model = initialize_model(agent_step!)
 
 #run_animation!(model, agent_step!; n_steps=2500)
 
