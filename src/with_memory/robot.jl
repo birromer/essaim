@@ -5,9 +5,10 @@ using DrWatson
 function agent_step!(r_i, model)
     N = nagents(model)
     D, R, O, E = model.dimensions  # coordinates, rotations, ontic, epistemic 
+    # dim ontic does not consider the coordinates
 
     # generate observation
-    y_i = observation(r_i.pos, r_i.vel, r_i.x, r_i.dx)
+    y_i = observation(r_i.onc, model)
 
     # perception step (i observes j)
     p_neighbours = nearby_agents(r_i, model, r_i.vis_range)
@@ -20,32 +21,32 @@ function agent_step!(r_i, model)
      } 
 
     for r_j ∈ p_neighbours
-        p_i[r_j.id] = perception(r_j.pos, r_j.vel, r_j.x, r_j.dx)
+        p_i[r_j.id] = perception(r_j, r_i)  # R_j is perceived by R_i
     end
 
     # communication step (i receives from j)
     c_neighbours = nearby_agents(r_i, model, r_i.com_range)
 
     c_i = Dict{Int,NTuple{
-        SVector{E,Float64},
-        SVector{E,Float64}}
+        MVector{E,Float64},
+        MVector{E,Float64}}
     }
 
     for r_j ∈ c_neighbours
-        c_i[r_j.id] = communication(r_j.μ, r_j.dμ)
+        c_i[r_j.id] = communication(r_j, r_i)  # R_j send a message to R_i
     end
 
     # evolve epistemic state
-    μ, dμ = epistemic_evolution(r_i.μ, r_i.dμ, y_i, p_i, c_i)
+    μ, dμ = epistemic_evolution(r_i, y_i, p_i, c_i)
 
     r_i.μ_i = μ
     r_i.dμ_i = dμ
 
     # generate control
-    u_i = control(r_i.μ_i, r_i.dμ_i)
+    u_i = control(r_i)
 
     # evolve ontic state
-    pos, vel, x, dx = ontic_evolution(r.pos, r.vel. r.x, r.dx, u_i)
+    pos, vel, x, dx = ontic_evolution(r_i, u_i)
 
     r_i.pos = pos
     r_i.vel = vel
@@ -121,11 +122,11 @@ function agent_flock_step!(r_i, model)
         dpos = dpos - σ * (r_i.pos - r_j.pos)
     end
 
-    r_i.dx[1] = 0
+    r_i.onc.dx[1] = 0
     r_i.vel = dpos
 
     r_i.pos = r_i.pos + r_i.vel * model.δt
-    r_i.x[1] = atan(r_i.vel[2], r_i.vel[1])
+    r_i.onc.x[1] = atan(r_i.vel[2], r_i.vel[1])
 end
 
 

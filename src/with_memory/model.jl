@@ -8,18 +8,25 @@ using DataStructures: CircularBuffer
 using Random
 using Colors
 
-mutable struct Robot{D,O,E} <: AbstractAgent
+mutable struct OnticStateDeriv{O}
+    x::MVector{O,Float64}   # ontic state
+    dx::MVector{O,Float64}  # d/dt ontic state
+end
+
+mutable struct EpistemicStateDeriv{E}
+    μ::MVector{E,Float64}   # epistemic state
+    dμ::MVector{E,Float64}  # d/dt epistemic state
+end
+
+mutable struct Robot{D,OnticState,EpistemicState} <: AbstractAgent
     id::Int
 
     # pos and vel are needed like this for ContinuousSpace struct
     pos::SVector{D,Float64}  # position part of ontic state
     vel::SVector{D,Float64}  # velocity ...
 
-    x::MVector{O,Float64}   # ontic state
-    dx::MVector{O,Float64}  # d/dt ontic state
-
-    μ::MVector{E,Float64}   # epistemic state
-    dμ::MVector{E,Float64}  # d/dt epistemic state
+    onc::OnticState
+    epi::EpistemicState
 
     vis_range::Float64  # perception range
     com_range::Float64  # communication range
@@ -29,6 +36,8 @@ end
 # here we initialize the model with its parameters and populate with robots
 function initialize_model(agent_step!;
                           N = 10,                  # number of agents
+                          OnticState = OnticStateDeriv,
+                          EpistemicState = EpistemicStateDeriv,
                           dimensions = (2,             # dim ontic position
                                         1,             # dim ontic rotation
                                         0,             # dim other ontic
@@ -79,7 +88,9 @@ function initialize_model(agent_step!;
        )
 
     # WARN: StandardABM works in discrete time, use EventQueueABM for continuous
-    model = StandardABM(Robot{D, O-D, E}, space;
+    
+#    model = StandardABM(Robot{D, O-D, E}, space;
+model = StandardABM(Robot{D, OnticStateDeriv{O-D}, EpistemicStateDeriv{E}}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties,
@@ -99,6 +110,8 @@ function initialize_model(agent_step!;
         x = MVector{O-D}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ D+1:O])
         dx = MVector{O-D}([0 for i ∈ D+1:O])
 
+        onc = OnticState{O-D}(x, dx)
+
         # compute velocity from rotation
         rot = (D == 1 ? 1 : # if D == 1 there is no rotation
                (D == 2 ? rot2D(x[1]) :
@@ -110,8 +123,11 @@ function initialize_model(agent_step!;
         μ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? pos[i] : (i ≤ copy_ontic && i > D ? x[i-D] : 0) for i ∈ 1:E])
         dμ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? vel[i] : (i ≤ copy_ontic && i > D ? dx[i-D] : 0) for i ∈ 1:E])
 
+        epi = EpistemicState{E}(μ, dμ)
+
         # initialize the agents with argument values and no heading change
-        agent = Robot{D,O-D,E}(n, pos, vel, x, dx, μ, dμ, vis_range, com_range, true)
+#        agent = Robot{D,O-D,E}(n, pos, vel, x, dx, μ, dμ, vis_range, com_range, true)
+        agent = Robot{D,OnticState{O-D},EpistemicState{E}}(n, pos, vel, onc, epi, vis_range, com_range, true)
         add_agent!(agent, model)
     end
 

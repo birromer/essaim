@@ -44,7 +44,7 @@ function make_figure(model; interactive=true)
 
     # make the properties that change according to the robot observables
     rob_status = Observable(robot_status.(allagents(model)))  # the countour color
-    rob_rot = Observable([r.x[1] for r in allagents(model)])
+    rob_rot = Observable([r.onc.x[1] for r in allagents(model)])
 
     # make the togglable properties of the plot observables too
     rob_vis = [(Observable(r.pos), Observable(r.vis_range)) for r in allagents(model)]
@@ -223,7 +223,7 @@ function animation_step!(model, plot_dict)
 
     # update the markers orientation and color
     plot_dict[:status][] = robot_status.(allagents(model))
-    plot_dict[:rot][] = [r.x[1] for r in allagents(model)]
+    plot_dict[:rot][] = [r.onc.x[1] for r in allagents(model)]
 
     # update the visibility and communication ranges
     for (id,r) in enumerate(allagents(model))

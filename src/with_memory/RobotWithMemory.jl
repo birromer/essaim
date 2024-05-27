@@ -12,7 +12,7 @@ include("model.jl")
 include("robot.jl")
 #TODO: Implement other dynamics for robot.
 include("draw.jl")  # Only for 2D visualization
-#TODO: Fix communication graph display.
+#TODO: Fix graph visualization.
 
 # example usage
 
