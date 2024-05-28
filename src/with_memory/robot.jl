@@ -36,19 +36,14 @@ function agent_generic_step!(r_i, model)
         c_i[r_j.id] = communication(r_j.epi, r_i)
     end
 
-    println("Position [", r_i.pos, "]\nEstimation [", r_i.epi.μ, "]")
-
     # compute derivative of epistemic state
     r_i.epi.dμ = epistemic_evolution(r_i.epi, y_i, p_i, c_i)
 
     # evolve epistemic state
     r_i.epi.μ = r_i.epi.μ + model.δt * r_i.epi.dμ
 
-    println("New estimation [", r_i.epi.μ, "]\n") 
-
     # generate control
     u_i = control(r_i.epi)
-    println("New control [", u_i, "]\n")
 
     # compute derivative of the ontic state
     r_i.vel, r_i.onc.dx = ontic_evolution(r_i.pos, r_i.vel, r_i.onc, u_i)
@@ -129,7 +124,7 @@ function φ_average_memory(epi_i, c_i)
         laplacian += σ * (epi_i.μ - epi_j.μ)
     end
 
-    -laplacian  #HACK: Maybe, the - shouldn't be here, but this is all of the 
+    -laplacian  #HACK: Maybe the - shouldn't be here, but this is all of the
                 # control algorithm for the epistemic state 
 end
 
