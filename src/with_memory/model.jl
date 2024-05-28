@@ -21,12 +21,11 @@ end
 mutable struct Robot{D,OnticState,EpistemicState} <: AbstractAgent
     id::Int
 
-    # pos and vel are needed like this for ContinuousSpace struct
+    # pos and vel are needed like this for ContinuousSpace functions
     pos::SVector{D,Float64}  # position part of ontic state
     vel::SVector{D,Float64}  # velocity ...
-
-    onc::OnticState
-    epi::EpistemicState
+    onc::OnticState          # whatever is the ontic state
+    epi::EpistemicState      # whatever is the epistemic state
 
     vis_range::Float64  # perception range
     com_range::Float64  # communication range
@@ -34,16 +33,16 @@ mutable struct Robot{D,OnticState,EpistemicState} <: AbstractAgent
 end
 
 # here we initialize the model with its parameters and populate with robots
-function initialize_model(agent_step!;
-                          N = 10,                  # number of agents
-                          OnticState = OnticStateDeriv,
-                          EpistemicState = EpistemicStateDeriv,
+function initialize_model(agent_input_step!;
+                          N = 3,                  # number of agents
+                          ontic_state = OnticStateDeriv,
+                          epistemic_state = EpistemicStateDeriv,
                           dimensions = (2,             # dim ontic position
                                         1,             # dim ontic rotation
                                         0,             # dim other ontic
                                         2),            # dim epi state
-                          range_dims = ((75.0, 75.0),  # range pos x
-                                        (75.0, 75.0),  # range pos y
+                          range_dims = ((25.0, 75.0),  # range pos x
+                                        (25.0, 75.0),  # range pos y
                                         (0, 2π)),      # range rotations
 #                                       (2, 15),       # range of each other
 #                                       (-3, 3),       #  ontic state variable
@@ -69,17 +68,18 @@ function initialize_model(agent_step!;
 
     O_rot = dimensions[2]    # rotation dimensions
     O_other = dimensions[3]  # other dimensions of ontic state
-    O = D + O_rot + O_other  # total dimensions ontic state
-    @assert O == length(range_dims) # make sure all ontic state variables have range
+    O = O_rot + O_other      # total dimensions ontic state (without coordinates!)
+    @assert O + D == length(range_dims) # make sure all ontic state variables have range
 
     E = dimensions[4]        # total dimensions epistemic state
-
 
     properties = Dict(  # save the time step in the model
         :dimensions => dimensions,
         :range_dims => range_dims,
         :copy_ontic => copy_ontic,
-        :step_function! => agent_step!,
+        :ontic_state => ontic_state{O},
+        :epistemic_state => epistemic_state{E},
+        :step_function! => agent_input_step!,
         :δt => δt,
         :history_size => history_size,
         :colors => distinguishable_colors(N, [RGB(1,1,1), RGB(0,0,0)], dropseed=true),
@@ -89,12 +89,12 @@ function initialize_model(agent_step!;
 
     # WARN: StandardABM works in discrete time, use EventQueueABM for continuous
     
-#    model = StandardABM(Robot{D, O-D, E}, space;
-model = StandardABM(Robot{D, OnticStateDeriv{O-D}, EpistemicStateDeriv{E}}, space;
+    # model = StandardABM(Robot{D, O-D, E}, space;
+    model = StandardABM(Robot{D, ontic_state{O}, epistemic_state{E}}, space;
                 rng = rng,
                 scheduler = scheduler,
                 properties = properties,
-                agent_step! = agent_step!,
+                agent_step! = agent_input_step!,
                 container = Vector,  #WARN: Using vector because no agents are 
                                      # expected to be removed, change to Dict
                                      # otherwise
@@ -107,10 +107,10 @@ model = StandardABM(Robot{D, OnticStateDeriv{O-D}, EpistemicStateDeriv{E}}, spac
         pos = SVector{D}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ 1:D])
 
         # everything ontic that is not the coordinates or their derivative
-        x = MVector{O-D}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ D+1:O])
-        dx = MVector{O-D}([0 for i ∈ D+1:O])
+        x = MVector{O}([rand(abmrng(model)) * (range_dims[i][2] - range_dims[i][1]) + range_dims[i][1] for i ∈ D+1:D+O])
+        dx = MVector{O}([0 for i ∈ D+1:D+O])
 
-        onc = OnticState{O-D}(x, dx)
+        onc = ontic_state{O}(x, dx)
 
         # compute velocity from rotation
         rot = (D == 1 ? 1 : # if D == 1 there is no rotation
@@ -123,12 +123,12 @@ model = StandardABM(Robot{D, OnticStateDeriv{O-D}, EpistemicStateDeriv{E}}, spac
         μ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? pos[i] : (i ≤ copy_ontic && i > D ? x[i-D] : 0) for i ∈ 1:E])
         dμ = MVector{E}([(i ≤ copy_ontic && i ≤ D) ? vel[i] : (i ≤ copy_ontic && i > D ? dx[i-D] : 0) for i ∈ 1:E])
 
-        epi = EpistemicState{E}(μ, dμ)
+        epi = epistemic_state{E}(μ, dμ)
 
         # initialize the agents with argument values and no heading change
-#        agent = Robot{D,O-D,E}(n, pos, vel, x, dx, μ, dμ, vis_range, com_range, true)
-        agent = Robot{D,OnticState{O-D},EpistemicState{E}}(n, pos, vel, onc, epi, vis_range, com_range, true)
-        add_agent!(agent, model)
+        agent = Robot{D,ontic_state{O},epistemic_state{E}}(n, pos, vel, onc, epi, vis_range, com_range, true)
+
+        add_agent_own_pos!(agent, model)  # WARN: Use this version to preserve position
     end
 
     return model

@@ -4,7 +4,7 @@ export Robot,
        run_animation!,
        make_animation!,
        run_simulator!,
-       agent_laplacian_step!,
+       agent_generic_step!,
        agent_flock_step!,
        agent_test_step!
 
@@ -16,7 +16,7 @@ include("draw.jl")  # Only for 2D visualization
 
 # example usage
 
-#model = initialize_model(agent_step!)
+#model = initialize_model(agent_step!, ontic_state=OnticStateDeriv, )
 
 #run_animation!(model, agent_step!; n_steps=2500)
 

@@ -2,115 +2,135 @@ using DrWatson
 @quickactivate "Essaim"
 
 # applies the laplacian from the task context
-function agent_step!(r_i, model)
+function agent_generic_step!(r_i, model)
     N = nagents(model)
+
+    # WARN: The dimension of  ontic does not consider the D and R.
+    # Whenever ontic state is needed, use 'pos', 'vel' and 'onc' fields.
+    # Whenever epistemic state is needed, use 'epi' field.
     D, R, O, E = model.dimensions  # coordinates, rotations, ontic, epistemic 
-    # dim ontic does not consider the coordinates
 
     # generate observation
-    y_i = observation(r_i.onc, model)
+    y_i = observation(r_i.pos, r_i.vel, r_i.onc)
 
     # perception step (i observes j)
     p_neighbours = nearby_agents(r_i, model, r_i.vis_range)
 
-    p_i = Dict{Int,NTuple{  # Dictionary to store the id and their communication 
-        SVector{D,Float64},
-        SVector{D,Float64},
-        MVector{O,Float64},
-        MVector{O,Float64}}
-     } 
+    p_i = Dict{Int, Tuple{  # Dictionary to store the id and their communication
+                           SVector{D,Float64}, 
+                           SVector{D,Float64}, 
+                           model.ontic_state }}()
 
     for r_j ∈ p_neighbours
-        p_i[r_j.id] = perception(r_j, r_i)  # R_j is perceived by R_i
+        # R_i perceives the ontic state of R_j
+        p_i[r_j.id] = perception(r_j.pos, r_j.vel, r_j.onc, r_i)
     end
 
     # communication step (i receives from j)
     c_neighbours = nearby_agents(r_i, model, r_i.com_range)
 
-    c_i = Dict{Int,NTuple{
-        MVector{E,Float64},
-        MVector{E,Float64}}
-    }
+    c_i = Dict{Int, model.epistemic_state}()
 
     for r_j ∈ c_neighbours
-        c_i[r_j.id] = communication(r_j, r_i)  # R_j send a message to R_i
+        # R_i receives a communication of R_j's epistemic state
+        c_i[r_j.id] = communication(r_j.epi, r_i)
     end
 
+    println("Position [", r_i.pos, "]\nEstimation [", r_i.epi.μ, "]")
     # evolve epistemic state
-    μ, dμ = epistemic_evolution(r_i, y_i, p_i, c_i)
-
-    r_i.μ_i = μ
-    r_i.dμ_i = dμ
+    epi = epistemic_evolution(r_i.epi, y_i, p_i, c_i)
+    r_i.epi = epi
+    println("New estimation [", r_i.epi.μ, "]\n")
 
     # generate control
-    u_i = control(r_i)
+    u_i = control(r_i.epi)
 
     # evolve ontic state
-    pos, vel, x, dx = ontic_evolution(r_i, u_i)
-
+    pos, vel, onc = ontic_evolution(r_i.pos, r_i.vel, r_i.onc, u_i, model.δt)
     r_i.pos = pos
     r_i.vel = vel
-    r_i.x = x
-    r_i.dx = dx
+    r_i.onc = onc
 
     return
 end
 
-#TODO: Check if this works with variable dimensions on control
-function ontic_evolution(pos_i, vel_i, x_i, dx_i, u_i)
-    D = size(pos_i)
-    O = size(x_i)
+# ======================= Task specific functions  ============================
 
-    @assert D == size(vel_i)
-    @assert O == size(dx_i)
-    @assert D + O == size(u_i)
+function ontic_evolution(pos_i, vel_i, onc_i, u_i, δt)
+    f_point_mass(pos_i, vel_i, onc_i, u_i, δt)
+end
+
+function epistemic_evolution(epi_i, y_i, p_i, c_i)
+    φ_average_memory(epi_i, c_i)
+end
+
+function observation(pos_i, vel_i, onc_i)
+    g_perfect_observation(pos_i, vel_i, onc_i)
+end
+
+function perception(pos_j, vel_j, onc_j, r_i)
+    η_perfect_perception(pos_j, vel_j, onc_j)
+end
+
+function communication(epi_j, r_i)
+    λ_perfect_communication(epi_j)
+end
+
+function control(epi_i)
+    h_follow_memory(epi_i)
+end
+
+# =========================== Implementations =================================
+
+function g_perfect_observation(pos_i, vel_i, onc_i)
+    pos_i, vel_i, onc_i
+end
+
+function η_perfect_perception(pos_j, vel_j, onc_j)
+    pos_j, vel_j, onc_j
+end
+
+function λ_perfect_communication(epi_j)
+    epi_j
+end
+
+# Gradient descent on the new estimated gathering position 
+function h_follow_memory(epi_i)
+    [- epi_i.μ               ;
+     atan(epi_i.μ[2], epi_i.μ[1])] # The heading is not being controlled,
+                                   # so we just display it according to velocity
+end
+
+function f_point_mass(pos_i, vel_i, onc_i, u_i, δt)
+    D = length(pos_i)
+    O = length(onc_i.x)
+    @assert D == length(vel_i)
+    @assert D + O == length(u_i)
 
     pos = pos_i
     vel = vel_i
-    x = x_i
-    dx = dx_i 
+    onc = onc_i
 
-    vel = u_i[1:D] # was 'dpos' in the example before
-    pos = pos + model.δt * vel
+    vel = u_i[1:D]
+    pos = pos + δt * vel
+    onc.x = u_i[D+1:D+O]
 
-    dx = u_i[D+1:O] # was 'atan(vel[2], vel[1])' and changed directly θ
-    x  = x + model.δt * dx
-
-    pos, vel, x, dx
+    pos, vel, onc 
 end
 
-#TODO: Finish this code, doesn't make much sense what is being done.
-# compare with previous example.
-# difference of epistemic states only
-function epistemic_evolution(μ_i, y_i, p_i, c_i)
-    μ = μ_i 
+function φ_average_memory(epi_i, c_i)
+    epi = epi_i
+    dpos = epi.μ
+#    E = size(epi.μ)[1]
 
-    σ = 0.1
-
-    for (μ_j, dμ_j) ∈ c_i
-        diff = diff - σ * (μ_i - μ_j)
+    for (id_j, epi_j) ∈ c_i
+        dpos = dpos - (epi.μ - epi_j.μ)
     end
 
-    μ = diff
-
-    μ, dμ
+    epi.μ = dpos
+    epi
 end
 
-function observation(pos_i, vel_i, x_i, dx_i)
-    pos_i, vel_i, x_i, dx_i
-end
-
-function perception(pos_g, vel_g, x_g, dx_g)
-    pos_g, vel_g, x_g, dx_g
-end
-
-function communication(μ_j, dμ_j)
-    μ_j, dμ_j
-end
-
-function control(μ_i, dμ_i)
-    - μ_i  # Gradient descent on the new estimated gathering position 
-end
 
 function agent_flock_step!(r_i, model)
     neighbours = nearby_agents(r_i, model, r_i.vis_range)
