@@ -37,27 +37,33 @@ function agent_generic_step!(r_i, model)
     end
 
     println("Position [", r_i.pos, "]\nEstimation [", r_i.epi.μ, "]")
+
+    # compute derivative of epistemic state
+    r_i.epi.dμ = epistemic_evolution(r_i.epi, y_i, p_i, c_i)
+
     # evolve epistemic state
-    epi = epistemic_evolution(r_i.epi, y_i, p_i, c_i)
-    r_i.epi = epi
-    println("New estimation [", r_i.epi.μ, "]\n")
+    r_i.epi.μ = r_i.epi.μ + model.δt * r_i.epi.dμ
+
+    println("New estimation [", r_i.epi.μ, "]\n") 
 
     # generate control
     u_i = control(r_i.epi)
+    println("New control [", u_i, "]\n")
+
+    # compute derivative of the ontic state
+    r_i.vel, r_i.onc.dx = ontic_evolution(r_i.pos, r_i.vel, r_i.onc, u_i)
 
     # evolve ontic state
-    pos, vel, onc = ontic_evolution(r_i.pos, r_i.vel, r_i.onc, u_i, model.δt)
-    r_i.pos = pos
-    r_i.vel = vel
-    r_i.onc = onc
+    r_i.pos   = r_i.pos   + model.δt * r_i.vel  # compute ontic state
+    r_i.onc.x = r_i.onc.x + model.δt * r_i.onc.dx
 
     return
 end
 
 # ======================= Task specific functions  ============================
 
-function ontic_evolution(pos_i, vel_i, onc_i, u_i, δt)
-    f_point_mass(pos_i, vel_i, onc_i, u_i, δt)
+function ontic_evolution(pos_i, vel_i, onc_i, u_i)
+    f_point_mass(pos_i, vel_i, onc_i, u_i)
 end
 
 function epistemic_evolution(epi_i, y_i, p_i, c_i)
@@ -96,39 +102,35 @@ end
 
 # Gradient descent on the new estimated gathering position 
 function h_follow_memory(epi_i)
-    [- epi_i.μ               ;
+    [epi_i.dμ                    ;
      atan(epi_i.μ[2], epi_i.μ[1])] # The heading is not being controlled,
                                    # so we just display it according to velocity
 end
 
-function f_point_mass(pos_i, vel_i, onc_i, u_i, δt)
+function f_point_mass(pos_i, vel_i, onc_i, u_i)
     D = length(pos_i)
     O = length(onc_i.x)
     @assert D == length(vel_i)
     @assert D + O == length(u_i)
 
-    pos = pos_i
-    vel = vel_i
-    onc = onc_i
-
     vel = u_i[1:D]
-    pos = pos + δt * vel
-    onc.x = u_i[D+1:D+O]
+    dx  = u_i[D+1:D+O]
 
-    pos, vel, onc 
+    vel, dx 
 end
 
 function φ_average_memory(epi_i, c_i)
-    epi = epi_i
-    dpos = epi.μ
-#    E = size(epi.μ)[1]
+    E = length(epi_i.μ)
+    laplacian = zeros(MVector{E})
+    σ = 1.0
 
+    # this is the actual φ
     for (id_j, epi_j) ∈ c_i
-        dpos = dpos - (epi.μ - epi_j.μ)
+        laplacian += σ * (epi_i.μ - epi_j.μ)
     end
 
-    epi.μ = dpos
-    epi
+    -laplacian  #HACK: Maybe, the - shouldn't be here, but this is all of the 
+                # control algorithm for the epistemic state 
 end
 
 
@@ -141,7 +143,6 @@ function agent_flock_step!(r_i, model)
     for r_j ∈ neighbours
         dpos = dpos - σ * (r_i.pos - r_j.pos)
     end
-
     r_i.onc.dx[1] = 0
     r_i.vel = dpos
 
