@@ -49,7 +49,7 @@ function agent_generic_step!(r_i, model)
     r_i.vel, r_i.onc.dx = ontic_evolution(r_i.pos, r_i.vel, r_i.onc, u_i)
 
     # evolve ontic state
-    r_i.pos   = r_i.pos   + model.δt * r_i.vel  # compute ontic state
+    r_i.pos   = r_i.pos   + model.δt * r_i.vel
     r_i.onc.x = r_i.onc.x + model.δt * r_i.onc.dx
 
     return
@@ -124,8 +124,7 @@ function φ_average_memory(epi_i, c_i)
         laplacian += σ * (epi_i.μ - epi_j.μ)
     end
 
-    -laplacian  #HACK: Maybe the - shouldn't be here, but this is all of the
-                # control algorithm for the epistemic state 
+    -laplacian
 end
 
 

@@ -19,7 +19,8 @@ robot_status(robot) = robot.alive == true ? :darkgreen : :red
 function visibility_graph(model)
     g = SimpleGraph(nagents(model))
     for (id1,r1) in enumerate(allagents(model))
-        for id2 in nearby_ids_exact(r1, model, r1.vis_range)
+#        for id2 in nearby_ids_exact(r1, model, r1.vis_range)
+        for id2 in nearby_ids(r1, model, r1.vis_range; search=:exact)
             if id1 != id2
                 add_edge!(g, id1, id2)
             end
@@ -93,7 +94,7 @@ function make_figure(model; interactive=true)
     # now add the data
     scatter!(ax_main, plot_dict[:pos];
              marker = robot_poly,
-             rotations = plot_dict[:rot],
+             rotation = plot_dict[:rot],  #HACK: the new version uses 'rotation' instead of 'rotations'
              strokewidth = 3,
              strokecolor = plot_dict[:status], # contour color is status (alive/dead)
              color = model.colors,     # unique color, same for trail
