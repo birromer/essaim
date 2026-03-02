@@ -69,7 +69,7 @@ function make_figure(model; interactive=true)
     )
 
     # create a new figure
-    fig = Figure(;resolution=(1000,700)); display(fig)
+    fig = Figure(;size=(1000,700)); display(fig)
 
     ax_main  = Axis(
         fig[1:16,1:4],
