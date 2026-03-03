@@ -1,4 +1,4 @@
-module RobotWithMemory
+module HybridSystem
 export Robot,
        initialize_model,
        run_animation!,

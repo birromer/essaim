@@ -1,11 +1,11 @@
 using DrWatson
 @quickactivate "Essaim"
 
-include(srcdir("with_memory", "RobotWithMemory.jl"))
+include(srcdir("system", "HybridSystem.jl"))
 
-model = RobotWithMemory.initialize_model(
-                         RobotWithMemory.agent_generic_step!;
-#                        RobotWithMemory.agent_laplacian_step!;
+model = HybridSystem.initialize_model(
+                         HybridSystem.agent_generic_step!;
+#                        HybridSystem.agent_laplacian_step!;
 #                        N = 10,                      # number of agents
 #                        dimensions = (2,             # dim ontic position
 #                                      1,             # dim ontic rotation
@@ -31,4 +31,4 @@ model = RobotWithMemory.initialize_model(
 
 #Draw.make_animation!(m_dubins, Robot.agent_simple_step!; n_frames=1000, steps_per_frame=1)
 
-RobotWithMemory.run_simulator!(model, RobotWithMemory.initialize_model)
+HybridSystem.run_simulator!(model, HybridSystem.initialize_model)
